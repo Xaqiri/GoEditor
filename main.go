@@ -14,6 +14,8 @@ import (
 // Too many variables are changing in too many places, fix that
 // Split this up into multiple files
 // Put the ANSI escape codes into a struct or consts
+// Need a better way to store and edit lines, possibly use a map
+// Look into ropes later
 
 var target io.Writer = os.Stdout
 
@@ -60,8 +62,9 @@ func main() {
 			if inp == '\033' {
 				mode = "move"
 			} else if inp == '\r' {
-				prompt++
-				height++
+				if prompt == height {
+					height++
+				}
 				lines = append(lines, string(line))
 				line = []rune{}
 				x = 0
@@ -117,6 +120,7 @@ func Down(n int) {
 	fmt.Fprintf(target, "\x1b[%dB", n)
 	y += n
 	cy += n
+	prompt += n
 	fmt.Print(cy, height)
 }
 
