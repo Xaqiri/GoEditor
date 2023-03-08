@@ -1,69 +1,73 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"strconv"
-	"syscall"
-	"unsafe"
+	"strings"
+
+	"golang.org/x/term"
 )
 
-type Termios struct {
-	Iflag  uint32
-	Oflag  uint32
-	Cflag  uint32
-	Lflaag uint32
-	Cc     [20]byte
-	Ispeed uint32
-	Ospeed uint32
-}
-
-var origTermios *Termios
-
-func TcSetAttr(fd uintptr, termios *Termios) error {
-	if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCSETA+1), uintptr(unsafe.Pointer(termios))); err != 0 {
-		return err
-	}
-	return nil
-}
-
-func TcGetAttr(fd uintptr) (*Termios, error) {
-	var termios = &Termios{}
-	if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TIOCGETA, uintptr(unsafe.Pointer(termios))); err != 0 {
-		return nil, err
-	}
-	return termios, nil
-}
-
-func enableRawMode() {
-	origTermios, _ = TcGetAttr(os.Stdin.Fd())
-	var raw Termios
-	raw = *origTermios
-	raw.Lflaag &^= syscall.ECHO | syscall.ICANON
-	if e := TcSetAttr(os.Stdin.Fd(), &raw); e != nil {
-		fmt.Fprintf(os.Stderr, "Problem enabling raw mode: %s\n", e)
-	}
-}
-
-func disableRawMode() {
-	if e := TcSetAttr(os.Stdin.Fd(), origTermios); e != nil {
-		fmt.Fprintf(os.Stderr, "Problem disabling raw mode: %s\n", e)
-	}
-}
+var target io.Writer = os.Stdout
+var height = 1
 
 func main() {
-	enableRawMode()
-	defer disableRawMode()
-	buffer := make([]byte, 1)
-	for cc, err := os.Stdin.Read(buffer); buffer[0] != 'q' && err == nil && cc == 1; cc, err = os.Stdin.Read(buffer) {
-		var r rune
-		r = rune(buffer[0])
-		if strconv.IsPrint(r) {
-			fmt.Printf("%d %c\n", buffer[0], r)
-		} else {
-			fmt.Print("%d\n", buffer[0])
+	mode := "move"
+	b := bufio.NewReader(os.Stdin)
+	s, _ := term.MakeRaw(0)
+	defer term.Restore(0, s)
+	for {
+		if mode != "input" {
+			inp, _, _ := b.ReadRune()
+			if inp == 'q' {
+				fmt.Printf("\033c")
+				break
+			} else if inp == 'k' {
+				Up(1)
+			} else if inp == 'j' {
+				Down(1)
+			} else if inp == 'h' {
+				Left(1)
+			} else if inp == 'l' {
+				Right(1)
+			} else if inp == 'i' {
+				mode = "input"
+				term.Restore(0, s)
+			}
 		}
+		if mode == "input" {
+			var inp string
+			fmt.Scan(&inp)
 
+			if strings.Contains(inp, "\\") {
+				mode = "move"
+				s, _ = term.MakeRaw(0)
+			}
+		}
 	}
-	os.Exit(0)
+}
+
+func Up(n int) {
+	fmt.Fprintf(target, "\x1b[%dA", n)
+	height += n
+}
+func Down(n int) {
+	fmt.Fprintf(target, "\x1b[%dB", n)
+	if height-n <= 0 {
+		height = 0
+	} else {
+		height -= n
+	}
+}
+
+func Left(n int) {
+	fmt.Fprintf(target, "\x1b[%dD", n)
+
+}
+
+func Right(n int) {
+	fmt.Fprintf(target, "\x1b[%dC", n)
+
 }
