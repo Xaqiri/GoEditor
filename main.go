@@ -5,139 +5,170 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	"golang.org/x/term"
 )
 
 // TODO
-// Fix bug with prompt and height
 // Too many variables are changing in too many places, fix that
 // Split this up into multiple files
 // Put the ANSI escape codes into a struct or consts
-// Need a better way to store and edit lines, possibly use a map
 // Look into ropes later
 
-var target io.Writer = os.Stdout
+type Editor struct {
+	prompt string
+	lines  map[int]string
+	writer io.Writer
+	reader *bufio.Reader
+	mode   string
+	w      int
+	h      int
+	cx     int
+	cy     int
+}
 
-var x, y, cx, cy = 0, 0, 4, 1
+func (e *Editor) initEditor() {
+	e.prompt = strconv.Itoa(prompt) + "  "
+	e.lines = map[int]string{}
+	e.writer = os.Stdout
+	e.reader = bufio.NewReader(os.Stdin)
+	e.mode = "input"
+	e.cx = 4
+	e.cy = 1
+	e.w, e.h, _ = term.GetSize(0)
+}
+
+var x, y = 0, 0
 var prompt, height = 1, 1
 
 func main() {
-	fmt.Fprintf(target, "\x1b[2J")
-	fmt.Fprintf(target, "\x1b[1;1H")
+	var e Editor
+	e.initEditor()
 
-	fmt.Print(prompt)
-	lines := []string{}
-	var line []rune
-	mode := "move"
-	b := bufio.NewReader(os.Stdin)
+	fmt.Fprintf(e.writer, "\x1b[2J")
+	// Move cursor to top left corner
+	fmt.Fprintf(e.writer, "\x1b[1;1H")
+
+	fmt.Print(e.prompt)
+	line := ""
+	e.lines[1] = line
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
+
 	for {
-		fmt.Fprintf(target, "\x1b[%d;%dH", cy, cx)
-		if mode != "input" {
-			inp, _, _ := b.ReadRune()
+		// Reverse bg and fg colors
+		fmt.Fprintf(e.writer, "\x1b[7m")
+		// Move cursor to the bottom left of the screen
+		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
+		// Clear the line
+		fmt.Fprintf(e.writer, "\x1b[2K")
+		for i := 0; i < e.w; i++ {
+			fmt.Print(" ")
+		}
+		// Move the cursor to the far right minus five spaces
+		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, e.w-5)
+		// Display the cursor's x and y positions
+		fmt.Printf("%d:%d", e.cy, e.cx)
+		// Reset the bg and fg colors
+		fmt.Fprintf(e.writer, "\x1b[m")
+		// Reset the cursor to the top left of the screen
+		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, e.cx)
+		if e.mode != "input" {
+			inp, _, _ := e.reader.ReadRune()
 			if inp == 'q' {
 				fmt.Printf("\033c")
-				for i := 0; i < len(lines); i++ {
-					fmt.Println(lines[i])
-				}
+				fmt.Fprintf(e.writer, "\x1b[1;1H")
 				break
 			} else if inp == 'k' {
-				Up(1)
+				Up(1, &e)
 			} else if inp == 'j' {
-				if cy < height {
-					Down(1)
-				}
+				Down(1, &e)
 			} else if inp == 'h' {
-				Left(1)
+				Left(1, &e)
 			} else if inp == 'l' {
-				Right(1)
+				Right(1, line, &e)
 			} else if inp == 'i' {
-				mode = "input"
+				e.mode = "input"
 			}
 		}
-		if mode == "input" {
-			inp, _, _ := b.ReadRune()
+		if e.mode == "input" {
+			if x > len(line) {
+				x = len(line)
+				e.cx = x + 4
+			}
+			inp, _, _ := e.reader.ReadRune()
 			if inp == '\033' {
-				mode = "move"
-			} else if inp == '\r' {
-				if prompt == height {
-					height++
-				}
-				lines = append(lines, string(line))
-				line = []rune{}
-				x = 0
-				cx = 4
-				Down(1)
-				fmt.Fprintf(target, "\x1b[G")
-				fmt.Print(prompt)
+				e.mode = "move"
+			} else if inp == '\x0D' {
+				continue
 			} else if inp == '\u007F' {
-				line = backspace(line)
+				if len(line) > 0 && x > 0 {
+					if x < len(line) {
+						left := line[:x-1]
+						right := line[x:]
+						line = left + right
+					} else {
+						line = line[:len(line)-1]
+					}
+					Left(1, &e)
+					fmt.Fprintf(e.writer, "\x1b[2K")
+					fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, 1)
+					fmt.Print(e.prompt)
+					fmt.Print(line)
+				}
 			} else {
-				fmt.Print(string(inp))
-				line = append(line, inp)
-				x++
-				cx++
+				left := line[:x]
+				right := line[x:]
+				left += string(inp)
+				line = left + right
+				fmt.Fprintf(e.writer, "\x1b[2K")
+				fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, 1)
+				fmt.Print(e.prompt)
+				fmt.Print(line)
+				Right(1, line, &e)
 			}
+			e.lines[e.cy] = line
 		}
 	}
 }
 
-func backspace(line []rune) []rune {
-
-	if len(line) >= 1 {
-		line = line[:len(line)-1]
-	}
-	fmt.Fprintf(target, "\x1b[2K")
-	fmt.Fprintf(target, "\x1b[G")
-	fmt.Print(prompt)
-	fmt.Print(string(line))
-	Left(1)
-	cx = len(string(line)) + 4
-	x = len(string(line))
-
-	fmt.Fprintf(target, "\x1b[%d;%dH", cy, cx)
-
-	return line
-}
-
-func Up(n int) {
-	fmt.Fprintf(target, "\x1b[%dA", n)
+func Up(n int, e *Editor) {
+	fmt.Fprintf(e.writer, "\x1b[%dA", n)
 	if y-n <= 0 {
 		y = 0
-		cy = 1
-		prompt = 1
 	} else {
 		y -= n
-		cy -= n
+		e.cy -= n
 		prompt -= n
 	}
-	fmt.Print(cy, height)
 }
 
-func Down(n int) {
-	fmt.Fprintf(target, "\x1b[%dB", n)
+func Down(n int, e *Editor) {
+	fmt.Fprintf(e.writer, "\x1b[%dB", n)
 	y += n
-	cy += n
+	e.cy += n
 	prompt += n
-	fmt.Print(cy, height)
+	fmt.Print(e.cy, height)
 }
 
-func Left(n int) {
-	fmt.Fprintf(target, "\x1b[%dD", n)
+func Left(n int, e *Editor) {
+	fmt.Fprintf(e.writer, "\x1b[%dD", n)
 	if x-n <= 0 {
 		x = 0
-		cx = 4
+		e.cx = 4
 	} else {
 		x -= n
-		cx -= n
+		e.cx -= n
 	}
-
 }
 
-func Right(n int) {
-	fmt.Fprintf(target, "\x1b[%dC", n)
+func Right(n int, line string, e *Editor) {
+	fmt.Fprintf(e.writer, "\x1b[%dC", n)
 	x += n
-	cx += n
+	e.cx += n
+	if x > len(line) {
+		x = len(line)
+		e.cx = x + 4
+	}
 }
