@@ -160,10 +160,11 @@ func main() {
 			} else if inp == '\x0D' { // Pressing return
 				prompt++
 				// Split the line at the cursor
-				// Part of the line up to the cursor
-				e.lines[e.row-1] = e.lines[e.row-1][:e.cx-len(e.prompt)-1]
 				// Part of the line after the cursor
 				line = e.lines[e.row-1][e.cx-len(e.prompt)-1:]
+				// Part of the line up to the cursor
+				e.lines[e.row-1] = e.lines[e.row-1][:e.cx-len(e.prompt)-1]
+
 				e.updateEditor()
 
 				// Inserts the portion of the previous line after the cursor
