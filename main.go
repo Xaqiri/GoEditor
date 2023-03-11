@@ -19,25 +19,25 @@ import (
 // Add command mode after pressing :
 
 type Editor struct {
-	prompt string
-	lines  map[int]string
-	writer io.Writer
-	reader *bufio.Reader
-	mode   string
-	w      int
-	h      int
-	cx     int
-	cy     int
+	lines                  []string
+	writer                 io.Writer
+	reader                 *bufio.Reader
+	w, h, col, row, cx, cy int
+	prompt, mode           string
 }
 
 func (e *Editor) initEditor() {
 	e.prompt = strconv.Itoa(prompt) + "  "
-	e.lines = map[int]string{}
+	e.lines = []string{""}
 	e.writer = os.Stdout
 	e.reader = bufio.NewReader(os.Stdin)
 	e.mode = "input"
 	e.cx = 4
 	e.cy = 1
+	e.row = len(e.lines)
+	e.col = len(e.lines[e.row-1])
+	y = len(e.lines)
+	x = len(e.lines[y-1])
 	e.w, e.h, _ = term.GetSize(0)
 }
 
@@ -45,8 +45,8 @@ func (e *Editor) updateEditor() {
 	e.updatePrompt()
 	e.cx = 4
 	e.cy++
-	y++
-	x = 0
+	y = len(e.lines)
+	x = len(e.lines[y-1])
 }
 
 func (e *Editor) updatePrompt() {
@@ -65,6 +65,46 @@ func (e *Editor) setCursor() {
 	} else {
 		fmt.Fprintf(e.writer, "\x1b[2 q")
 	}
+	e.row = e.cy
+	e.col = len(e.lines[e.row-1])
+}
+
+func (e *Editor) insertLine(lineNumber int, line string) {
+	temp := make([]string, len(e.lines)+1)
+	copy(temp, e.lines[:lineNumber])
+	temp[lineNumber] = line
+	copy(temp[lineNumber+1:], e.lines[lineNumber:])
+	e.lines = temp
+}
+
+func (e *Editor) refreshScreen() {
+	// Reverse bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[7m")
+	// Move cursor to the bottom left of the screen
+	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
+	// Clear the line
+	fmt.Fprintf(e.writer, "\x1b[2K")
+	for i := 0; i < e.w; i++ {
+		fmt.Print(" ")
+	}
+	// Reset the bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[m")
+	// Draw placeholder icons on the left of the screen
+	for i := len(e.lines) + 1; i < e.h; i++ {
+		fmt.Fprintf(e.writer, "\x1b[%d;%dH", i, 1)
+		fmt.Print("~")
+	}
+	// Move the cursor to the far right minus five spaces
+	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, e.w-5)
+	// Reverse bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[7m")
+	// Display the cursor's x and y positions
+	fmt.Printf("%d:%d ", e.cx, e.cy)
+	// Reset the bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[m")
+	// Reset the cursor to the top left of the screen
+	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, e.cx)
+	e.setCursor()
 }
 
 var x, y = 0, 1
@@ -80,39 +120,13 @@ func main() {
 
 	fmt.Print(e.prompt)
 	line := ""
-	e.lines[1] = line
+	e.lines[0] = line
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
 
-	// Reverse bg and fg colors
-	fmt.Fprintf(e.writer, "\x1b[7m")
-	// Move cursor to the bottom left of the screen
-	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
-	// Clear the line
-	fmt.Fprintf(e.writer, "\x1b[2K")
-	for i := 0; i < e.w; i++ {
-		fmt.Print(" ")
-	}
-	// Reset the bg and fg colors
-	fmt.Fprintf(e.writer, "\x1b[m")
-	// Draw placeholder icons on the left of the screen
-	for i := 2; i < e.h; i++ {
-		fmt.Fprintf(e.writer, "\x1b[%d;%dH", i, 1)
-		fmt.Print("~")
-	}
-
 	for {
-		// Move the cursor to the far right minus five spaces
-		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, e.w-5)
-		// Reverse bg and fg colors
-		fmt.Fprintf(e.writer, "\x1b[7m")
-		// Display the cursor's x and y positions
-		fmt.Printf("%d:%d ", e.cx, e.cy)
-		// Reset the bg and fg colors
-		fmt.Fprintf(e.writer, "\x1b[m")
-		// Reset the cursor to the top left of the screen
-		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, e.cx)
-		e.setCursor()
+
+		e.refreshScreen()
 		if e.mode != "input" {
 			inp, _, _ := e.reader.ReadRune()
 			if inp == 'q' {
@@ -134,20 +148,41 @@ func main() {
 			}
 		}
 		if e.mode == "input" {
-			line = e.lines[y]
+			line = e.lines[y-1]
 			if x > len(line) {
 				x = len(line)
 				e.cx = x + 4
 			}
 			inp, _, _ := e.reader.ReadRune()
-			if inp == '\033' {
+			if inp == '\033' { // Pressing escape
 				e.mode = "move"
 				e.setCursor()
-			} else if inp == '\x0D' {
+			} else if inp == '\x0D' { // Pressing return
 				prompt++
+				// Split the line at the cursor
+				// Part of the line up to the cursor
+				e.lines[e.row-1] = e.lines[e.row-1][:e.cx-len(e.prompt)-1]
+				// Part of the line after the cursor
+				line = e.lines[e.row-1][e.cx-len(e.prompt)-1:]
 				e.updateEditor()
-				line = ""
-				e.lines[y] = line
+
+				// Inserts the portion of the previous line after the cursor
+				// onto the new line
+				e.insertLine(e.row, line)
+
+				// Redraw the screen
+				fmt.Fprintf(e.writer, "\x1b[2J")
+				for i := 1; i <= len(e.lines); i++ {
+					y = i
+					fmt.Fprintf(e.writer, "\x1b[%d;%dH", i, 1)
+					if i < 10 {
+						fmt.Print(strconv.Itoa(i) + "  ")
+					} else {
+						fmt.Print(strconv.Itoa(i) + " ")
+					}
+					fmt.Print(e.lines[i-1])
+				}
+				y = prompt
 				fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, 1)
 				fmt.Print(e.prompt)
 				fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, e.cx)
@@ -161,7 +196,7 @@ func main() {
 					} else {
 						line = line[:len(line)-1]
 					}
-					e.lines[y] = line
+					e.lines[y-1] = line
 					Left(1, &e)
 					fmt.Fprintf(e.writer, "\x1b[2K")
 					fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, 1)
@@ -173,7 +208,7 @@ func main() {
 				right := line[x:]
 				left += string(inp)
 				line = left + right
-				e.lines[y] = line
+				e.lines[y-1] = line
 				fmt.Fprintf(e.writer, "\x1b[2K")
 				fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, 1)
 				fmt.Print(e.prompt)
@@ -186,7 +221,7 @@ func main() {
 
 func Up(n int, e *Editor) {
 	fmt.Fprintf(e.writer, "\x1b[%dA", n)
-	if y-n <= 0 {
+	if e.cy-n <= 0 {
 		y = 1
 		e.cy = 1
 	} else {
@@ -194,8 +229,8 @@ func Up(n int, e *Editor) {
 		e.cy -= n
 		prompt -= n
 	}
-	if x > len(e.lines[y]) {
-		x = len(e.lines[y])
+	if x > len(e.lines[e.cy-1]) {
+		x = len(e.lines[e.cy-1])
 		e.cx = x + 4
 	}
 }
@@ -209,8 +244,8 @@ func Down(n int, e *Editor) {
 		e.cy += n
 		prompt += n
 	}
-	if x > len(e.lines[y]) {
-		x = len(e.lines[y])
+	if x > len(e.lines[y-1]) {
+		x = len(e.lines[y-1])
 		e.cx = x + 4
 	}
 }
@@ -230,8 +265,8 @@ func Right(n int, e *Editor) {
 	fmt.Fprintf(e.writer, "\x1b[%dC", n)
 	x += n
 	e.cx += n
-	if x > len(e.lines[y]) {
-		x = len(e.lines[y])
+	if x > len(e.lines[y-1]) {
+		x = len(e.lines[y-1])
 		e.cx = x + 4
 	}
 }
