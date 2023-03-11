@@ -13,8 +13,10 @@ import (
 // TODO
 // Too many variables are changing in too many places, fix that
 // Split this up into multiple files
-// Put the ANSI escape codes into a struct or consts
+// Put the ANSI escape codes into the Editor struct
 // Look into ropes later
+// Add saving and loading files
+// Add command mode after pressing :
 
 type Editor struct {
 	prompt string
@@ -40,12 +42,29 @@ func (e *Editor) initEditor() {
 }
 
 func (e *Editor) updateEditor() {
-	e.prompt = strconv.Itoa(prompt) + "  "
+	e.updatePrompt()
 	e.cx = 4
 	e.cy++
 	y++
 	x = 0
+}
 
+func (e *Editor) updatePrompt() {
+	padding := ""
+	if prompt < 10 {
+		padding = "  "
+	} else {
+		padding = " "
+	}
+	e.prompt = strconv.Itoa(prompt) + padding
+}
+
+func (e *Editor) setCursor() {
+	if e.mode == "input" {
+		fmt.Fprintf(e.writer, "\x1b[6 q")
+	} else {
+		fmt.Fprintf(e.writer, "\x1b[2 q")
+	}
 }
 
 var x, y = 0, 1
@@ -65,28 +84,35 @@ func main() {
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
 
-	for {
-		// Reverse bg and fg colors
-		fmt.Fprintf(e.writer, "\x1b[7m")
-		// Move cursor to the bottom left of the screen
-		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
-		// Clear the line
-		fmt.Fprintf(e.writer, "\x1b[2K")
-		for i := 0; i < e.w; i++ {
-			fmt.Print(" ")
-		}
-		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
-		fmt.Printf("%v", e.lines)
-		// fmt.Printf("%d:%d", x, y)
+	// Reverse bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[7m")
+	// Move cursor to the bottom left of the screen
+	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
+	// Clear the line
+	fmt.Fprintf(e.writer, "\x1b[2K")
+	for i := 0; i < e.w; i++ {
+		fmt.Print(" ")
+	}
+	// Reset the bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[m")
+	// Draw placeholder icons on the left of the screen
+	for i := 2; i < e.h; i++ {
+		fmt.Fprintf(e.writer, "\x1b[%d;%dH", i, 1)
+		fmt.Print("~")
+	}
 
+	for {
 		// Move the cursor to the far right minus five spaces
 		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, e.w-5)
+		// Reverse bg and fg colors
+		fmt.Fprintf(e.writer, "\x1b[7m")
 		// Display the cursor's x and y positions
-		fmt.Printf("%d:%d", e.cx, e.cy)
+		fmt.Printf("%d:%d ", e.cx, e.cy)
 		// Reset the bg and fg colors
 		fmt.Fprintf(e.writer, "\x1b[m")
 		// Reset the cursor to the top left of the screen
 		fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, e.cx)
+		e.setCursor()
 		if e.mode != "input" {
 			inp, _, _ := e.reader.ReadRune()
 			if inp == 'q' {
@@ -100,14 +126,14 @@ func main() {
 			} else if inp == 'h' {
 				Left(1, &e)
 			} else if inp == 'l' {
-				Right(1, line, &e)
+				Right(1, &e)
 			} else if inp == 'i' {
 				e.mode = "input"
-				e.prompt = strconv.Itoa(prompt) + "  "
+				e.updatePrompt()
+				e.setCursor()
 			}
 		}
 		if e.mode == "input" {
-
 			line = e.lines[y]
 			if x > len(line) {
 				x = len(line)
@@ -116,6 +142,7 @@ func main() {
 			inp, _, _ := e.reader.ReadRune()
 			if inp == '\033' {
 				e.mode = "move"
+				e.setCursor()
 			} else if inp == '\x0D' {
 				prompt++
 				e.updateEditor()
@@ -151,7 +178,7 @@ func main() {
 				fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.cy, 1)
 				fmt.Print(e.prompt)
 				fmt.Print(line)
-				Right(1, line, &e)
+				Right(1, &e)
 			}
 		}
 	}
@@ -186,7 +213,6 @@ func Down(n int, e *Editor) {
 		x = len(e.lines[y])
 		e.cx = x + 4
 	}
-
 }
 
 func Left(n int, e *Editor) {
@@ -200,7 +226,7 @@ func Left(n int, e *Editor) {
 	}
 }
 
-func Right(n int, line string, e *Editor) {
+func Right(n int, e *Editor) {
 	fmt.Fprintf(e.writer, "\x1b[%dC", n)
 	x += n
 	e.cx += n
