@@ -12,6 +12,7 @@ func main() {
 	var e Editor
 	e.initEditor()
 	line := e.lines[0]
+	open("main.go", &e)
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
 

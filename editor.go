@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -112,13 +113,18 @@ func (e *Editor) drawLineNums() {
 func (e *Editor) drawDocument() {
 	for i := 1; i <= len(e.lines); i++ {
 		e.moveCursor(i, e.lineNumWidth)
-		fmt.Print(e.lines[e.row])
+		line := strings.Split(e.lines[e.row], " ")
+		for _, s := range line {
+			if s == "for" || s == "func" {
+				fmt.Fprintf(e.writer, "\x1b[34m%s\x1b[m ", s)
+			} else {
+				fmt.Print(s, " ")
+			}
+		}
 	}
 }
 
 func (e *Editor) drawBottomInfo(x, y int) {
-	// strings.Join(e.debug, ",")
-
 	e.moveCursor(y, x)
 	btm := ""
 	mode := " " + e.mode
@@ -137,4 +143,44 @@ func (e *Editor) drawBottomInfo(x, y int) {
 	fmt.Print(btm)
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
+}
+
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+func open(fn string, e *Editor) {
+	file, err := os.Open(fn)
+	defer file.Close()
+	check(err)
+	scanner := bufio.NewScanner(file)
+	for i := 0; i < 30; i++ {
+		scanner.Scan()
+		b := scanner.Bytes()
+		if len(b) > 0 {
+			for i, c := range b {
+				if c != 9 {
+					break
+				}
+				b[i] = 32
+			}
+		}
+		if i == 0 {
+			e.lines[i] = scanner.Text()
+		} else {
+			e.lines = append(e.lines, scanner.Text())
+		}
+		// fmt.Println(scanner.Bytes())
+	}
+	// fmt.Println(strings.Split(e.lines[19], ""))
+	// os.Exit(1)
+	// for _, l := range b1 {
+	// 	if l == 32 || l == 102 {
+	// 		fmt.Println(string(l))
+	// 	} else {
+	// 		fmt.Print(l)
+	// 	}
+	// }
 }
