@@ -18,6 +18,7 @@ type Editor struct {
 	w, h         int // Width and height of terminal
 	col, row     int // Width of current row and max number of rows
 	cx, cy       int // Cursor position
+	offset       int
 	prompt, mode string
 	lineNumWidth int
 	debug        []string
@@ -32,7 +33,7 @@ func (e *Editor) initEditor() {
 		"clear":     {'\033', '[', '2', 'J'},
 		"move":      {'\033', '[', ' ', ';', ' ', 'H'},
 	}
-	e.lines = []string{""}
+	e.lines = []string{}
 	e.cy = 1
 	e.updatePrompt()
 	e.lineNumWidth = len(e.prompt) + 1
@@ -43,6 +44,7 @@ func (e *Editor) initEditor() {
 	e.row = e.cy - 1
 	e.col = e.cx - e.lineNumWidth
 	e.w, e.h, _ = term.GetSize(0)
+	e.offset = 0
 	e.debug = e.lines
 }
 
@@ -50,18 +52,18 @@ func (e *Editor) moveCursor(row, col int) {
 	fmt.Fprintf(e.writer, "\033[%d;%dH", row, col)
 	e.cx = col
 	e.cy = row
-	e.row = e.cy - 1
+	e.row = e.cy - 1 + e.offset
 	e.col = e.cx - e.lineNumWidth
 }
 
 func (e *Editor) updatePrompt() {
 	p := ""
-	if e.cy <= len(e.lines) {
-		p = strconv.Itoa(e.cy)
+	if e.row <= len(e.lines) {
+		p = strconv.Itoa(e.row + 1)
 	} else {
 		p = "~"
 	}
-	for len(p) < 3 {
+	for len(p) < 4 {
 		p += " "
 	}
 	e.prompt = p
@@ -111,7 +113,7 @@ func (e *Editor) drawLineNums() {
 }
 
 func (e *Editor) drawDocument() {
-	for i := 1; i <= len(e.lines); i++ {
+	for i := 1; i < e.h; i++ {
 		e.moveCursor(i, e.lineNumWidth)
 		line := strings.Split(e.lines[e.row], " ")
 		for _, s := range line {
@@ -135,14 +137,16 @@ func (e *Editor) drawBottomInfo(x, y int) {
 	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
 	// Clear the line
 	fmt.Fprintf(e.writer, "\x1b[2K")
+	btm += strings.Join(e.debug, ":")
 	btm += mode
-	for i := len(mode); i < e.w-len(coord); i++ {
+	for i := len(mode) + len(btm); i < e.w-len(coord); i++ {
 		btm += " "
 	}
 	btm += coord
 	fmt.Print(btm)
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
+	e.debug = []string{}
 }
 
 func check(e error) {
@@ -156,22 +160,21 @@ func open(fn string, e *Editor) {
 	defer file.Close()
 	check(err)
 	scanner := bufio.NewScanner(file)
-	for i := 0; i < 30; i++ {
-		scanner.Scan()
-		b := scanner.Bytes()
-		if len(b) > 0 {
-			for i, c := range b {
-				if c != 9 {
-					break
-				}
-				b[i] = 32
-			}
+	for scanner.Scan() {
+		// b := scanner.Bytes()
+		// if len(b) > 0 {
+		// 	for i, c := range b {
+		// 		if c != 9 {
+		// 			break
+		// 		}
+		// 		b[i] = 32
+		// 	}
+		// }
+		s := scanner.Text()
+		if len(s) > 0 {
+			s = strings.ReplaceAll(scanner.Text(), string('\t'), "    ")
 		}
-		if i == 0 {
-			e.lines[i] = scanner.Text()
-		} else {
-			e.lines = append(e.lines, scanner.Text())
-		}
+		e.lines = append(e.lines, s)
 		// fmt.Println(scanner.Bytes())
 	}
 	// fmt.Println(strings.Split(e.lines[19], ""))

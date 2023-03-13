@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strconv"
+
 	"golang.org/x/term"
 )
 
@@ -11,12 +13,15 @@ import (
 func main() {
 	var e Editor
 	e.initEditor()
-	line := e.lines[0]
 	open("main.go", &e)
+	line := e.lines[0]
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
 
 	for {
+		e.debug = append(e.debug, strconv.Itoa(e.offset))
+		e.debug = append(e.debug, strconv.Itoa(e.row))
+		e.debug = append(e.debug, strconv.Itoa(len(e.lines)))
 
 		e.refreshScreen()
 		line = e.lines[e.row]
@@ -73,6 +78,10 @@ func Up(n int, e *Editor) {
 	if e.col > len(e.lines[e.row]) {
 		e.moveCursor(e.cy, len(e.lines[e.row])+e.lineNumWidth)
 	}
+	if e.cy < 1 {
+		e.offset--
+		e.cy = 1
+	}
 }
 
 func Down(n int, e *Editor) {
@@ -81,6 +90,12 @@ func Down(n int, e *Editor) {
 	}
 	if e.col > len(e.lines[e.row]) {
 		e.moveCursor(e.cy, len(e.lines[e.row])+e.lineNumWidth)
+	}
+	if e.cy > e.h-1 && len(e.lines) >= e.h-1 {
+		e.offset++
+	}
+	if e.cy > e.h-1 {
+		e.cy = e.h - 1
 	}
 }
 
@@ -116,12 +131,12 @@ func handleMoveInput(inp byte, e *Editor) int {
 		e.mode = "input"
 		e.setCursorStyle()
 	} else if inp == 'o' {
-		e.insertLine(e.cy, "")
+		e.insertLine(e.row+1, "")
 		Down(1, e)
 		e.mode = "input"
 	} else if inp == 'O' {
 		Left(e.col, e)
-		e.insertLine(e.cy, e.lines[e.row])
+		e.insertLine(e.row, e.lines[e.row])
 		e.lines[e.row] = ""
 		e.mode = "input"
 	} else if inp == 'x' {
