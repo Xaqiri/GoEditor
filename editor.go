@@ -20,11 +20,11 @@ type Editor struct {
 	prompt, mode string
 	lineNumWidth int
 	debug        []string
-	ansiCodes    map[string][]rune
+	ansiCodes    map[string][]byte
 }
 
 func (e *Editor) initEditor() {
-	e.ansiCodes = map[string][]rune{
+	e.ansiCodes = map[string][]byte{
 		"escape":    {'\033'},
 		"return":    {'\x0D'},
 		"backspace": {'\u007F'},
@@ -88,6 +88,7 @@ func (e *Editor) insertLine(lineNumber int, line string) {
 func (e *Editor) clearScreen() {
 	// Clear screen
 	fmt.Fprintf(e.writer, string(e.ansiCodes["clear"]))
+	e.moveCursor(1, 1)
 }
 
 func (e *Editor) refreshScreen() {
