@@ -14,12 +14,13 @@ func main() {
 	var e Editor
 	e.initEditor()
 	open("main.go", &e)
+	e.lines = append(e.lines, "")
 	line := e.lines[0]
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
 
 	for {
-		e.debug = append(e.debug, strconv.Itoa(e.offset))
+		// e.debug = append(e.debug, strconv.Itoa(e.offset))
 		e.debug = append(e.debug, strconv.Itoa(e.row))
 		e.debug = append(e.debug, strconv.Itoa(len(e.lines)))
 
@@ -35,7 +36,7 @@ func main() {
 			}
 		case "command":
 			if inp == 'w' {
-				e.initEditor()
+				e.lines = []string{""}
 			}
 			e.mode = "move"
 		case "input":
@@ -44,14 +45,11 @@ func main() {
 				e.setCursorStyle()
 			} else if inp == e.ansiCodes["return"][0] { // Pressing return
 				// Split the line at the cursor
-				// Part of the line after the cursor
-				line = e.lines[e.row][e.col:]
-				// Part of the line up to the cursor
-				e.lines[e.row] = e.lines[e.row][:e.col]
-				// Inserts the portion of the previous line after the cursor
-				// onto the new line
-				e.insertLine(e.cy, line)
-				e.moveCursor(e.cy+1, e.lineNumWidth)
+				left := e.lines[e.row][e.col:]  // Part of the line up to the cursor
+				right := e.lines[e.row][:e.col] // Part of the line after the cursor
+				e.lines[e.row] = left           // Current row will contain characters up to the cursor
+				e.insertLine(e.row, right)      // Add a new line below with the rest of the characters
+				Down(1, &e)                     // Move down to the new line
 			} else if inp == e.ansiCodes["backspace"][0] {
 				if len(line) > 0 && e.col > 0 {
 					Left(1, &e)
@@ -61,6 +59,7 @@ func main() {
 					e.lines[e.row] = line
 				}
 			} else {
+				// Typing new characters
 				e.lines[e.row] =
 					line[:e.col] + // Get the line up to the cursor
 						string(inp) + // Add the new letter
@@ -146,6 +145,13 @@ func handleMoveInput(inp byte, e *Editor) int {
 				line = line[:e.col] + line[e.col+1:]
 			}
 			e.lines[e.row] = line
+		}
+	} else if inp == 'D' {
+		if e.row != len(e.lines)-1 {
+			temp := make([]string, len(e.lines)-1)
+			copy(temp, e.lines[:e.row])
+			copy(temp[e.row:], e.lines[e.row+1:])
+			e.lines = temp
 		}
 	}
 	return 1

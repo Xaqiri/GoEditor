@@ -23,9 +23,12 @@ type Editor struct {
 	lineNumWidth int
 	debug        []string
 	ansiCodes    map[string][]byte
+	keywords     []string
 }
 
 func (e *Editor) initEditor() {
+
+	e.keywords = []string{"for", "func", "if", "else", "return", "package", "import", "switch", "case", "var"}
 	e.ansiCodes = map[string][]byte{
 		"escape":    {'\033'},
 		"return":    {'\x0D'},
@@ -58,7 +61,7 @@ func (e *Editor) moveCursor(row, col int) {
 
 func (e *Editor) updatePrompt() {
 	p := ""
-	if e.row <= len(e.lines) {
+	if e.row < len(e.lines) {
 		p = strconv.Itoa(e.row + 1)
 	} else {
 		p = "~"
@@ -86,6 +89,7 @@ func (e *Editor) insertLine(lineNumber int, line string) {
 	temp[lineNumber] = line
 	copy(temp[lineNumber+1:], e.lines[lineNumber:])
 	e.lines = temp
+	e.moveCursor(e.cy, e.cx-e.col)
 }
 
 func (e *Editor) clearScreen() {
@@ -105,19 +109,34 @@ func (e *Editor) refreshScreen() {
 }
 
 func (e *Editor) drawLineNums() {
-	for i := 1; i < e.h; i++ {
-		e.moveCursor(i, 1)
+	for i := 0; i < e.h; i++ {
+		e.moveCursor(i+1, 1)
 		e.updatePrompt()
 		fmt.Print(e.prompt)
 	}
 }
 
+func contains(words []string, word string) bool {
+	for _, i := range words {
+		if i == word {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Editor) drawDocument() {
-	for i := 1; i < e.h; i++ {
-		e.moveCursor(i, e.lineNumWidth)
+	drawHeight := 0
+	if len(e.lines) > e.h {
+		drawHeight = e.h - 1
+	} else {
+		drawHeight = len(e.lines)
+	}
+	for i := 0; i < drawHeight; i++ {
+		e.moveCursor(i+1, e.lineNumWidth)
 		line := strings.Split(e.lines[e.row], " ")
 		for _, s := range line {
-			if s == "for" || s == "func" {
+			if contains(e.keywords, s) {
 				fmt.Fprintf(e.writer, "\x1b[34m%s\x1b[m ", s)
 			} else {
 				fmt.Print(s, " ")
