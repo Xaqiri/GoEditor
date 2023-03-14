@@ -179,8 +179,7 @@ func (e *Editor) save(fn string) {
 	check(err)
 	writer := bufio.NewWriter(file)
 	for _, v := range e.lines {
-		_, err := writer.WriteString(v)
-		_, err = writer.WriteString("\n")
+		_, err := writer.WriteString(v + "\n")
 		check(err)
 	}
 	writer.Flush()

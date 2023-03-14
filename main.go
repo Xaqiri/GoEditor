@@ -11,6 +11,7 @@ import (
 // Look into ropes later
 // Move cursor related stuff to its own file
 // Move file related stuff to its own file
+// Clean up everything to do with input
 
 func main() {
 	args := os.Args
@@ -177,7 +178,7 @@ func handleMoveInput(inp byte, e *Editor) int {
 			}
 			e.lines[e.row] = line
 		}
-	} else if inp == 'D' {
+	} else if inp == 'd' {
 		if e.row != len(e.lines)-1 {
 			temp := make([]string, len(e.lines)-1)
 			copy(temp, e.lines[:e.row])
@@ -187,6 +188,29 @@ func handleMoveInput(inp byte, e *Editor) int {
 			if dif > 0 {
 				Left(dif, e)
 			}
+		}
+	} else if inp == 'g' {
+		e.offset = 0
+		e.moveCursor(1, e.lineNumWidth)
+	} else if inp == 'G' {
+		if len(e.lines) > e.h {
+			e.offset = len(e.lines) - e.h + 1
+			e.moveCursor(e.h-1, e.lineNumWidth)
+		}
+	} else if inp == 'U' {
+		if e.offset > e.h {
+			e.offset -= e.h
+		} else {
+			e.offset = 0
+			e.moveCursor(1, e.lineNumWidth)
+		}
+	} else if inp == 'D' {
+		if len(e.lines) > e.h {
+			e.offset += e.h - 1
+		}
+		if e.offset > len(e.lines)-e.h+1 {
+			e.offset = len(e.lines) - e.h + 1
+			e.moveCursor(e.h-1, e.lineNumWidth)
 		}
 	}
 	return 1
