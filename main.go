@@ -1,33 +1,41 @@
 package main
 
 import (
-	"strconv"
+	"os"
+	// "strconv"
 
 	"golang.org/x/term"
 )
 
 // TODO
 // Look into ropes later
-// Add saving files
-// Fix cursor movemetng methods
 // Move cursor related stuff to its own file
+// Move file related stuff to its own file
 
 func main() {
+	args := os.Args
+	var fn string
 	var e Editor
 	e.initEditor()
-	open("main.go", &e)
-	e.lines = append(e.lines, "")
-	line := e.lines[0]
+
+	if len(args) > 1 {
+		fn = args[1]
+		open(fn, &e)
+		e.debug = append(e.debug, fn)
+	}
+	if len(e.lines) == 0 {
+		e.lines = append(e.lines, "")
+	}
 	s, _ := term.MakeRaw(0)
 	defer term.Restore(0, s)
 
 	for {
 		// e.debug = append(e.debug, strconv.Itoa(e.offset))
-		e.debug = append(e.debug, strconv.Itoa(e.cx))
-		e.debug = append(e.debug, strconv.Itoa(e.col))
+		// e.debug = append(e.debug, strconv.Itoa(e.cx))
+		// e.debug = append(e.debug, strconv.Itoa(e.col))
 
 		e.refreshScreen()
-		line = e.lines[e.row]
+		line := e.lines[e.row]
 
 		inp, _ := e.reader.ReadByte()
 		switch e.mode {
@@ -38,7 +46,11 @@ func main() {
 			}
 		case "command":
 			if inp == 'w' {
-				e.lines = []string{""}
+				if fn != "" {
+					e.save(fn)
+				} else {
+					e.debug = append(e.debug, "No file to save")
+				}
 			}
 			e.mode = "move"
 		case "input":

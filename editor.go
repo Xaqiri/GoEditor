@@ -12,18 +12,18 @@ import (
 )
 
 type Editor struct {
-	lines        []string
-	writer       io.Writer
-	reader       *bufio.Reader
-	w, h         int // Width and height of terminal
-	col, row     int // Width of current row and max number of rows
-	cx, cy       int // Cursor position
-	offset       int
-	prompt, mode string
-	lineNumWidth int
-	debug        []string
-	ansiCodes    map[string][]byte
-	keywords     []string
+	lines            []string
+	writer           io.Writer
+	reader           *bufio.Reader
+	w, h             int // Width and height of terminal
+	col, row         int // Width of current row and max number of rows
+	cx, cy           int // Cursor position
+	offset, tabWidth int
+	prompt, mode     string
+	lineNumWidth     int
+	debug            []string
+	ansiCodes        map[string][]byte
+	keywords         []string
 }
 
 func (e *Editor) initEditor() {
@@ -42,13 +42,14 @@ func (e *Editor) initEditor() {
 	e.lineNumWidth = len(e.prompt) + 1
 	e.writer = os.Stdout
 	e.reader = bufio.NewReader(os.Stdin)
-	e.mode = "input"
+	e.mode = "move"
 	e.cx = e.lineNumWidth
 	e.row = e.cy - 1
 	e.col = e.cx - e.lineNumWidth
 	e.w, e.h, _ = term.GetSize(0)
 	e.offset = 0
 	e.debug = e.lines
+	e.tabWidth = 4
 }
 
 func (e *Editor) moveCursor(row, col int) {
@@ -168,6 +169,23 @@ func (e *Editor) drawBottomInfo(x, y int) {
 	e.debug = []string{}
 }
 
+func (e *Editor) hi() {
+	fmt.Println("Hi")
+}
+
+func (e *Editor) save(fn string) {
+	file, err := os.Create(fn)
+	defer file.Close()
+	check(err)
+	writer := bufio.NewWriter(file)
+	for _, v := range e.lines {
+		_, err := writer.WriteString(v)
+		_, err = writer.WriteString("\n")
+		check(err)
+	}
+	writer.Flush()
+}
+
 func check(e error) {
 	if e != nil {
 		panic(e)
@@ -175,34 +193,19 @@ func check(e error) {
 }
 
 func open(fn string, e *Editor) {
+	tab := ""
+	for i := 0; i < e.tabWidth; i++ {
+		tab += " "
+	}
 	file, err := os.Open(fn)
 	defer file.Close()
 	check(err)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		// b := scanner.Bytes()
-		// if len(b) > 0 {
-		// 	for i, c := range b {
-		// 		if c != 9 {
-		// 			break
-		// 		}
-		// 		b[i] = 32
-		// 	}
-		// }
 		s := scanner.Text()
 		if len(s) > 0 {
-			s = strings.ReplaceAll(scanner.Text(), string('\t'), "    ")
+			s = strings.ReplaceAll(scanner.Text(), string('\t'), tab)
 		}
 		e.lines = append(e.lines, s)
-		// fmt.Println(scanner.Bytes())
 	}
-	// fmt.Println(strings.Split(e.lines[19], ""))
-	// os.Exit(1)
-	// for _, l := range b1 {
-	// 	if l == 32 || l == 102 {
-	// 		fmt.Println(string(l))
-	// 	} else {
-	// 		fmt.Print(l)
-	// 	}
-	// }
 }
