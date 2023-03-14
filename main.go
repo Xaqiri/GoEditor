@@ -8,7 +8,9 @@ import (
 
 // TODO
 // Look into ropes later
-// Add saving and loading files
+// Add saving files
+// Fix cursor movemetng methods
+// Move cursor related stuff to its own file
 
 func main() {
 	var e Editor
@@ -21,8 +23,8 @@ func main() {
 
 	for {
 		// e.debug = append(e.debug, strconv.Itoa(e.offset))
-		e.debug = append(e.debug, strconv.Itoa(e.row))
-		e.debug = append(e.debug, strconv.Itoa(len(e.lines)))
+		e.debug = append(e.debug, strconv.Itoa(e.cx))
+		e.debug = append(e.debug, strconv.Itoa(e.col))
 
 		e.refreshScreen()
 		line = e.lines[e.row]
@@ -152,6 +154,10 @@ func handleMoveInput(inp byte, e *Editor) int {
 			copy(temp, e.lines[:e.row])
 			copy(temp[e.row:], e.lines[e.row+1:])
 			e.lines = temp
+			dif := e.col - len(e.lines[e.row])
+			if dif > 0 {
+				Left(dif, e)
+			}
 		}
 	}
 	return 1
