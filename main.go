@@ -45,14 +45,33 @@ func main() {
 				return
 			}
 		case "command":
-			if inp == 'w' {
-				if fn != "" {
-					e.save(fn)
-				} else {
-					e.debug = append(e.debug, "No file to save")
+			switch inp {
+			case e.ansiCodes["escape"][0]:
+				e.cmd = []string{"", ""}
+				e.mode = "move"
+			case e.ansiCodes["return"][0]:
+				if e.cmd[1] == "q" {
+					e.clearScreen()
+					os.Exit(0)
+				} else if e.cmd[1] == "w" {
+					if fn != "" {
+						e.save(fn)
+					} else {
+						e.cmd[0] = ""
+						e.debug = append(e.debug, "No file to save")
+					}
 				}
+				e.cmd = []string{"", ""}
+			case e.ansiCodes["backspace"][0]:
+				if len(e.cmd[1]) > 0 {
+					e.cmd[1] = e.cmd[1][:len(e.cmd[1])-1]
+				}
+			default:
+				e.debug = []string{""}
+				e.cmd[0] = ":"
+				e.cmd[1] += string(inp)
 			}
-			e.mode = "move"
+
 		case "input":
 			if inp == e.ansiCodes["escape"][0] { // Pressing escape
 				e.mode = "move"
@@ -127,10 +146,7 @@ func Right(n int, e *Editor) {
 }
 
 func handleMoveInput(inp byte, e *Editor) int {
-	if inp == 'q' {
-		e.clearScreen()
-		return 0
-	} else if inp == 'k' {
+	if inp == 'k' {
 		Up(1, e)
 	} else if inp == 'j' {
 		Down(1, e)
@@ -139,6 +155,7 @@ func handleMoveInput(inp byte, e *Editor) int {
 	} else if inp == 'l' {
 		Right(1, e)
 	} else if inp == ':' {
+		e.cmd[0] = ":"
 		e.mode = "command"
 	} else if inp == 'i' {
 		e.mode = "input"

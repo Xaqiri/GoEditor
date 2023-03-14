@@ -22,6 +22,7 @@ type Editor struct {
 	prompt, mode     string
 	lineNumWidth     int
 	debug            []string
+	cmd              []string
 	ansiCodes        map[string][]byte
 	keywords         []string
 }
@@ -48,7 +49,8 @@ func (e *Editor) initEditor() {
 	e.col = e.cx - e.lineNumWidth
 	e.w, e.h, _ = term.GetSize(0)
 	e.offset = 0
-	e.debug = e.lines
+	e.cmd = []string{"", ""}
+	e.debug = []string{""}
 	e.tabWidth = 4
 }
 
@@ -150,6 +152,7 @@ func (e *Editor) drawBottomInfo(x, y int) {
 	e.moveCursor(y, x)
 	btm := ""
 	mode := " " + e.mode
+	cmd := e.cmd[0] + e.cmd[1]
 	coord := strconv.Itoa(e.col) + ":" + strconv.Itoa(e.cy)
 	// Reverse bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[7m")
@@ -157,20 +160,17 @@ func (e *Editor) drawBottomInfo(x, y int) {
 	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
 	// Clear the line
 	fmt.Fprintf(e.writer, "\x1b[2K")
-	btm += strings.Join(e.debug, ":")
+	btm += strings.Join(e.debug, " ")
+	btm += cmd
 	btm += mode
-	for i := len(mode) + len(btm); i < e.w-len(coord); i++ {
+	for i := len(btm); i < e.w-len(coord); i++ {
 		btm += " "
 	}
 	btm += coord
 	fmt.Print(btm)
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
-	e.debug = []string{}
-}
-
-func (e *Editor) hi() {
-	fmt.Println("Hi")
+	// e.debug = []string{""}
 }
 
 func (e *Editor) save(fn string) {
