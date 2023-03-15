@@ -18,16 +18,41 @@ type Editor struct {
 	w, h             int // Width and height of terminal
 	col, row         int // Width of current row and max number of rows
 	cx, cy           int // Cursor position
-	offset, tabWidth int
+	offset, tabWidth int // Number of lines offscreen, width of a tab in spaces
 	prompt, mode     string
-	lineNumWidth     int
+	lineNums         LineNumSection
+	document         TextDocSection
+	infoBar          InfoBarSection
 	debug            []string
 	cmd              []string
 	ansiCodes        map[string][]byte
 	keywords         []string
+	fileName         string
+}
+
+type LineNumSection struct {
+	w, h int
+	l, t int
+}
+
+type InfoBarSection struct {
+	w, h int
+	l, t int
+	cmd  string
+	pos  string
+	mode string
+}
+
+type TextDocSection struct {
+	w, h int
+	l, t int
 }
 
 func (e *Editor) initEditor() {
+	e.w, e.h, _ = term.GetSize(0)
+	e.infoBar = InfoBarSection{w: e.w, h: 2, l: 1, t: e.h - 1}
+	e.lineNums = LineNumSection{w: 4, h: e.h - 1, l: 1, t: 1}
+	e.document = TextDocSection{w: e.w - e.lineNums.w, h: e.h - e.infoBar.h, l: e.lineNums.w + 1, t: 1}
 
 	e.keywords = []string{"for", "func", "if", "else", "return", "package", "import", "switch", "case", "var"}
 	e.ansiCodes = map[string][]byte{
@@ -36,44 +61,35 @@ func (e *Editor) initEditor() {
 		"backspace": {'\u007F'},
 		"clear":     {'\033', '[', '2', 'J'},
 		"move":      {'\033', '[', ' ', ';', ' ', 'H'},
+		"hide":      {'\033', '[', '?', '2', '5', 'l'},
+		"show":      {'\033', '[', '?', '2', '5', 'h'},
 	}
 	e.lines = []string{}
-	e.cy = 1
-	e.updatePrompt()
-	e.lineNumWidth = len(e.prompt) + 1
+	e.cx, e.cy = e.document.l, e.document.t
 	e.writer = os.Stdout
 	e.reader = bufio.NewReader(os.Stdin)
 	e.mode = "move"
-	e.cx = e.lineNumWidth
-	e.row = e.cy - 1
-	e.col = e.cx - e.lineNumWidth
-	e.w, e.h, _ = term.GetSize(0)
+	e.row = 0
+	e.col = 0
 	e.offset = 0
 	e.cmd = []string{"", ""}
-	e.debug = []string{""}
 	e.tabWidth = 4
 }
 
-func (e *Editor) moveCursor(row, col int) {
+func (e *Editor) hideCursor() {
+	fmt.Fprintf(e.writer, string(e.ansiCodes["hide"]))
+}
+
+func (e *Editor) showCursor() {
+	fmt.Fprintf(e.writer, string(e.ansiCodes["show"]))
+}
+
+func (e *Editor) moveCursor(col, row int) {
 	fmt.Fprintf(e.writer, "\033[%d;%dH", row, col)
 	e.cx = col
 	e.cy = row
-	e.row = e.cy - 1 + e.offset
-	e.col = e.cx - e.lineNumWidth
-}
-
-func (e *Editor) updatePrompt() {
-	p := ""
-	if e.row < len(e.lines) {
-		p = strconv.Itoa(e.row + 1)
-	} else {
-		p = "~"
-	}
-	for len(p) < 4 {
-		p += " "
-	}
-	e.prompt = p
-	e.lineNumWidth = len(e.prompt) + 1
+	e.row = e.cy + e.offset - e.document.t
+	e.col = e.cx - e.document.l
 }
 
 func (e *Editor) setCursorStyle() {
@@ -92,11 +108,10 @@ func (e *Editor) insertLine(lineNumber int, line string) {
 	temp[lineNumber] = line
 	copy(temp[lineNumber+1:], e.lines[lineNumber:])
 	e.lines = temp
-	e.moveCursor(e.cy, e.cx-e.col)
+	e.moveCursor(e.document.l, e.cy)
 }
 
 func (e *Editor) clearScreen() {
-	// Clear screen
 	fmt.Fprintf(e.writer, string(e.ansiCodes["clear"]))
 	e.moveCursor(1, 1)
 }
@@ -106,16 +121,19 @@ func (e *Editor) refreshScreen() {
 	e.clearScreen()
 	e.drawLineNums()
 	e.drawDocument()
-	e.drawBottomInfo(x, y)
+	e.drawBottomInfo()
 	e.setCursorStyle()
-	e.moveCursor(y, x)
+	e.moveCursor(x, y)
 }
 
 func (e *Editor) drawLineNums() {
-	for i := 0; i < e.h; i++ {
-		e.moveCursor(i+1, 1)
-		e.updatePrompt()
-		fmt.Print(e.prompt)
+	for i := 1; i < e.lineNums.h; i++ {
+		e.moveCursor(1, i)
+		if i <= len(e.lines)-e.offset {
+			fmt.Print(i + e.offset)
+		} else {
+			fmt.Print("~")
+		}
 	}
 }
 
@@ -130,13 +148,16 @@ func contains(words []string, word string) bool {
 
 func (e *Editor) drawDocument() {
 	drawHeight := 0
-	if len(e.lines) > e.h {
-		drawHeight = e.h - 1
+	if len(e.lines) > e.document.h {
+		drawHeight = e.document.h
 	} else {
 		drawHeight = len(e.lines)
 	}
-	for i := 0; i < drawHeight; i++ {
-		e.moveCursor(i+1, e.lineNumWidth)
+	if len(e.lines)-e.offset < drawHeight {
+		drawHeight = len(e.lines) - e.offset
+	}
+	for i := 1; i <= drawHeight; i++ {
+		e.moveCursor(e.document.l, i)
 		line := strings.Split(e.lines[e.row], " ")
 		for _, s := range line {
 			if contains(e.keywords, s) {
@@ -148,29 +169,40 @@ func (e *Editor) drawDocument() {
 	}
 }
 
-func (e *Editor) drawBottomInfo(x, y int) {
-	e.moveCursor(y, x)
-	btm := ""
-	mode := " " + e.mode
-	cmd := e.cmd[0] + e.cmd[1]
-	coord := strconv.Itoa(e.col) + ":" + strconv.Itoa(e.cy)
-	// Reverse bg and fg colors
-	fmt.Fprintf(e.writer, "\x1b[7m")
-	// Move cursor to the bottom left of the screen
-	fmt.Fprintf(e.writer, "\x1b[%d;%dH", e.h, 1)
+func (e *Editor) drawBottomInfo() {
+	e.moveCursor(1, e.infoBar.t)
+	bg := ""
+	e.infoBar.mode = " + "
+	e.infoBar.cmd = strings.Join(e.cmd, "")
+	if e.mode == "command" {
+		bg = "\x1b[41m"
+	} else if e.mode == "input" {
+		bg = "\x1b[42m"
+	} else {
+		bg = "\x1b[46m"
+		e.infoBar.cmd = e.fileName
+	}
+	e.infoBar.pos = strings.Join([]string{strconv.Itoa(e.col), ":", strconv.Itoa(e.row)}, "")
 	// Clear the line
 	fmt.Fprintf(e.writer, "\x1b[2K")
-	btm += strings.Join(e.debug, " ")
-	btm += cmd
-	btm += mode
-	for i := len(btm); i < e.w-len(coord); i++ {
-		btm += " "
+
+	fmt.Fprintf(e.writer, bg)
+	fmt.Fprintf(e.writer, "\x1b[30m")
+	fmt.Print(e.infoBar.mode)
+
+	fmt.Fprintf(e.writer, "\x1b[m")
+	// Reverse bg and fg colors
+	fmt.Fprintf(e.writer, "\x1b[7m")
+
+	for i := len(e.infoBar.mode); i < e.infoBar.w-len(e.infoBar.pos); i++ {
+		fmt.Print(" ")
 	}
-	btm += coord
-	fmt.Print(btm)
+	fmt.Print(e.infoBar.pos)
+
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
-	// e.debug = []string{""}
+	e.moveCursor(1, e.infoBar.t+1)
+	fmt.Print(e.infoBar.cmd)
 }
 
 func (e *Editor) save(fn string) {
@@ -185,13 +217,7 @@ func (e *Editor) save(fn string) {
 	writer.Flush()
 }
 
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
-func open(fn string, e *Editor) {
+func (e *Editor) open(fn string) {
 	tab := ""
 	for i := 0; i < e.tabWidth; i++ {
 		tab += " "
@@ -199,6 +225,7 @@ func open(fn string, e *Editor) {
 	file, err := os.Open(fn)
 	defer file.Close()
 	check(err)
+	e.fileName = fn
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		s := scanner.Text()
@@ -206,5 +233,11 @@ func open(fn string, e *Editor) {
 			s = strings.ReplaceAll(scanner.Text(), string('\t'), tab)
 		}
 		e.lines = append(e.lines, s)
+	}
+}
+
+func check(e error) {
+	if e != nil {
+		panic(e)
 	}
 }

@@ -17,11 +17,13 @@ func main() {
 	args := os.Args
 	var fn string
 	var e Editor
+	var k KeyCode
 	e.initEditor()
+	k.initKeyCode()
 
 	if len(args) > 1 {
 		fn = args[1]
-		open(fn, &e)
+		e.open(fn)
 		e.debug = append(e.debug, fn)
 	}
 	if len(e.lines) == 0 {
@@ -31,17 +33,13 @@ func main() {
 	defer term.Restore(0, s)
 
 	for {
-		// e.debug = append(e.debug, strconv.Itoa(e.offset))
-		// e.debug = append(e.debug, strconv.Itoa(e.cx))
-		// e.debug = append(e.debug, strconv.Itoa(e.col))
 
 		e.refreshScreen()
 		line := e.lines[e.row]
-
 		inp, _ := e.reader.ReadByte()
 		switch e.mode {
 		case "move":
-			i := handleMoveInput(inp, &e)
+			i := handleMoveInput(inp, &e, k)
 			if i < 1 {
 				return
 			}
@@ -56,13 +54,13 @@ func main() {
 					os.Exit(0)
 				} else if e.cmd[1] == "w" {
 					if fn != "" {
-						e.save(fn)
+						e.save("testing.txt")
 					} else {
 						e.cmd[0] = ""
 						e.debug = append(e.debug, "No file to save")
 					}
 				}
-				e.cmd = []string{"", ""}
+				e.cmd = []string{":", ""}
 			case e.ansiCodes["backspace"][0]:
 				if len(e.cmd[1]) > 0 {
 					e.cmd[1] = e.cmd[1][:len(e.cmd[1])-1]
@@ -77,14 +75,14 @@ func main() {
 			if inp == e.ansiCodes["escape"][0] { // Pressing escape
 				e.mode = "move"
 				e.setCursorStyle()
-			} else if inp == e.ansiCodes["return"][0] { // Pressing return
+			} else if inp == e.ansiCodes["return"][0] || inp == 13 { // Pressing return
 				// Split the line at the cursor
 				left := e.lines[e.row][e.col:]  // Part of the line up to the cursor
 				right := e.lines[e.row][:e.col] // Part of the line after the cursor
 				e.lines[e.row] = left           // Current row will contain characters up to the cursor
 				e.insertLine(e.row, right)      // Add a new line below with the rest of the characters
 				Down(1, &e)                     // Move down to the new line
-			} else if inp == e.ansiCodes["backspace"][0] {
+			} else if inp == e.ansiCodes["backspace"][0] || string(inp) == "24" {
 				if len(line) > 0 && e.col > 0 {
 					Left(1, &e)
 					if e.col < len(line) {
@@ -106,10 +104,10 @@ func main() {
 
 func Up(n int, e *Editor) {
 	if e.row > 0 {
-		e.moveCursor(e.cy-1, e.cx)
+		e.moveCursor(e.cx, e.cy-1)
 	}
 	if e.col > len(e.lines[e.row]) {
-		e.moveCursor(e.cy, len(e.lines[e.row])+e.lineNumWidth)
+		e.moveCursor(len(e.lines[e.row])+e.lineNums.w, e.cy)
 	}
 	if e.cy < 1 {
 		e.offset--
@@ -119,34 +117,34 @@ func Up(n int, e *Editor) {
 
 func Down(n int, e *Editor) {
 	if e.row < len(e.lines)-1 {
-		e.moveCursor(e.cy+1, e.cx)
+		e.moveCursor(e.cx, e.cy+1)
 	}
 	if e.col > len(e.lines[e.row]) {
-		e.moveCursor(e.cy, len(e.lines[e.row])+e.lineNumWidth)
+		e.moveCursor(len(e.lines[e.row])+e.lineNums.w, e.cy)
 	}
-	if e.cy > e.h-1 && len(e.lines) >= e.h-1 {
+	if e.cy > e.document.h && len(e.lines) >= e.document.h {
 		e.offset++
 	}
-	if e.cy > e.h-1 {
-		e.cy = e.h - 1
+	if e.cy > e.document.h {
+		e.cy = e.document.h
 	}
 }
 
 func Left(n int, e *Editor) {
-	if e.col-n > 0 {
-		e.moveCursor(e.cy, e.cx-n)
+	if e.col-n > e.document.l {
+		e.moveCursor(e.cx-n, e.cy)
 	} else {
-		e.moveCursor(e.cy, e.lineNumWidth)
+		e.moveCursor(e.document.l, e.cy)
 	}
 }
 
 func Right(n int, e *Editor) {
 	if e.col < len(e.lines[e.row]) {
-		e.moveCursor(e.cy, e.cx+n)
+		e.moveCursor(e.cx+n, e.cy)
 	}
 }
 
-func handleMoveInput(inp byte, e *Editor) int {
+func handleMoveInput(inp byte, e *Editor, k KeyCode) int {
 	if inp == 'k' {
 		Up(1, e)
 	} else if inp == 'j' {
@@ -179,7 +177,7 @@ func handleMoveInput(inp byte, e *Editor) int {
 			e.lines[e.row] = line
 		}
 	} else if inp == 'd' {
-		if e.row != len(e.lines)-1 {
+		if e.row < len(e.lines)-1 {
 			temp := make([]string, len(e.lines)-1)
 			copy(temp, e.lines[:e.row])
 			copy(temp[e.row:], e.lines[e.row+1:])
@@ -191,26 +189,26 @@ func handleMoveInput(inp byte, e *Editor) int {
 		}
 	} else if inp == 'g' {
 		e.offset = 0
-		e.moveCursor(1, e.lineNumWidth)
+		e.moveCursor(e.document.l, e.document.t)
 	} else if inp == 'G' {
 		if len(e.lines) > e.h {
 			e.offset = len(e.lines) - e.h + 1
-			e.moveCursor(e.h-1, e.lineNumWidth)
+			e.moveCursor(e.document.l, e.document.h)
 		}
-	} else if inp == 'U' {
-		if e.offset > e.h {
-			e.offset -= e.h
+	} else if inp == k.ctrlU {
+		if e.offset > e.document.h {
+			e.offset -= e.document.h
 		} else {
 			e.offset = 0
-			e.moveCursor(1, e.lineNumWidth)
+			e.moveCursor(e.document.l, 1)
 		}
-	} else if inp == 'D' {
-		if len(e.lines) > e.h {
-			e.offset += e.h - 1
-		}
-		if e.offset > len(e.lines)-e.h+1 {
-			e.offset = len(e.lines) - e.h + 1
-			e.moveCursor(e.h-1, e.lineNumWidth)
+	} else if inp == k.ctrlD {
+		if len(e.lines) > e.document.h {
+			e.offset += e.document.h
+			if e.offset > len(e.lines)-e.document.h {
+				e.offset = len(e.lines) - e.document.h
+				e.moveCursor(e.document.l, e.document.h)
+			}
 		}
 	}
 	return 1
