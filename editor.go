@@ -11,6 +11,15 @@ import (
 	"golang.org/x/term"
 )
 
+type mode int
+
+const (
+	input = iota
+	move
+	command
+	visual
+)
+
 type Editor struct {
 	lines            []string
 	writer           io.Writer
@@ -19,7 +28,7 @@ type Editor struct {
 	col, row         int // Width of current row and max number of rows
 	cx, cy           int // Cursor position
 	offset, tabWidth int // Number of lines offscreen, width of a tab in spaces
-	prompt, mode     string
+	mode             int
 	lineNums         LineNumSection
 	document         TextDocSection
 	infoBar          InfoBarSection
@@ -28,6 +37,7 @@ type Editor struct {
 	ansiCodes        map[string][]byte
 	keywords         []string
 	fileName         string
+	tab              string
 }
 
 type LineNumSection struct {
@@ -50,7 +60,7 @@ type TextDocSection struct {
 
 func (e *Editor) initEditor() {
 	e.w, e.h, _ = term.GetSize(0)
-	e.infoBar = InfoBarSection{w: e.w, h: 2, l: 1, t: e.h - 1}
+	e.infoBar = InfoBarSection{w: e.w, h: 2, l: 1, t: e.h - 1, pos: strconv.Itoa(e.row)}
 	e.lineNums = LineNumSection{w: 4, h: e.h - 1, l: 1, t: 1}
 	e.document = TextDocSection{w: e.w - e.lineNums.w, h: e.h - e.infoBar.h, l: e.lineNums.w + 1, t: 1}
 
@@ -68,12 +78,17 @@ func (e *Editor) initEditor() {
 	e.cx, e.cy = e.document.l, e.document.t
 	e.writer = os.Stdout
 	e.reader = bufio.NewReader(os.Stdin)
-	e.mode = "move"
-	e.row = 0
-	e.col = 0
+	e.mode = move
 	e.offset = 0
+	e.row = e.cy + e.offset - e.document.t
+	e.col = 0
 	e.cmd = []string{"", ""}
 	e.tabWidth = 4
+	e.tab = ""
+	for i := 0; i < e.tabWidth; i++ {
+		e.tab += " "
+	}
+
 }
 
 func (e *Editor) hideCursor() {
@@ -84,31 +99,14 @@ func (e *Editor) showCursor() {
 	fmt.Fprintf(e.writer, string(e.ansiCodes["show"]))
 }
 
-func (e *Editor) moveCursor(col, row int) {
-	fmt.Fprintf(e.writer, "\033[%d;%dH", row, col)
-	e.cx = col
-	e.cy = row
-	e.row = e.cy + e.offset - e.document.t
-	e.col = e.cx - e.document.l
-}
-
 func (e *Editor) setCursorStyle() {
-	if e.mode == "input" {
+	if e.mode == input {
 		// Line
 		fmt.Fprintf(e.writer, "\x1b[6 q")
 	} else {
 		// Block
 		fmt.Fprintf(e.writer, "\x1b[2 q")
 	}
-}
-
-func (e *Editor) insertLine(lineNumber int, line string) {
-	temp := make([]string, len(e.lines)+1)
-	copy(temp, e.lines[:lineNumber])
-	temp[lineNumber] = line
-	copy(temp[lineNumber+1:], e.lines[lineNumber:])
-	e.lines = temp
-	e.moveCursor(e.document.l, e.cy)
 }
 
 func (e *Editor) clearScreen() {
@@ -118,12 +116,32 @@ func (e *Editor) clearScreen() {
 
 func (e *Editor) refreshScreen() {
 	x, y := e.cx, e.cy
+
+	e.infoBar.pos += strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) //+ ":" + strconv.Itoa(len(e.lines))
 	e.clearScreen()
 	e.drawLineNums()
-	e.drawDocument()
+	e.drawDocument(x, y)
 	e.drawBottomInfo()
 	e.setCursorStyle()
 	e.moveCursor(x, y)
+}
+
+func (e *Editor) moveCursor(col, row int) {
+	fmt.Fprintf(e.writer, "\033[%d;%dH", row, col)
+	e.cx = col
+	e.cy = row
+}
+
+func (e *Editor) moveDocCursor(col, row int) {
+	dif := 0
+	e.row = row + e.offset - e.document.t
+	e.col = col - e.document.l
+	if e.row < len(e.lines) && e.col > len(e.lines[e.row]) {
+		dif = e.col - len(e.lines[e.row])
+		e.col -= dif
+		col = e.col + e.document.l
+	}
+	e.moveCursor(col, row)
 }
 
 func (e *Editor) drawLineNums() {
@@ -146,7 +164,16 @@ func contains(words []string, word string) bool {
 	return false
 }
 
-func (e *Editor) drawDocument() {
+func (e *Editor) insertLine(lineNumber int, line string) {
+	temp := make([]string, len(e.lines)+1)
+	copy(temp, e.lines[:lineNumber])
+	temp[lineNumber] = line
+	copy(temp[lineNumber+1:], e.lines[lineNumber:])
+	e.lines = temp
+	e.moveDocCursor(e.document.l, e.cy)
+}
+
+func (e *Editor) drawDocument(x, y int) {
 	drawHeight := 0
 	if len(e.lines) > e.document.h {
 		drawHeight = e.document.h
@@ -157,7 +184,7 @@ func (e *Editor) drawDocument() {
 		drawHeight = len(e.lines) - e.offset
 	}
 	for i := 1; i <= drawHeight; i++ {
-		e.moveCursor(e.document.l, i)
+		e.moveDocCursor(e.document.l, i)
 		line := strings.Split(e.lines[e.row], " ")
 		for _, s := range line {
 			if contains(e.keywords, s) {
@@ -167,22 +194,30 @@ func (e *Editor) drawDocument() {
 			}
 		}
 	}
+	e.moveDocCursor(x, y)
 }
 
 func (e *Editor) drawBottomInfo() {
 	e.moveCursor(1, e.infoBar.t)
 	bg := ""
-	e.infoBar.mode = " + "
+	modeStr := []string{" ", "", " "}
+	if e.mode == input {
+		modeStr[1] = "i"
+	} else if e.mode == move {
+		modeStr[1] = "m"
+	} else if e.mode == command {
+		modeStr[1] = "c"
+	}
+	e.infoBar.mode = strings.Join(modeStr, "")
 	e.infoBar.cmd = strings.Join(e.cmd, "")
-	if e.mode == "command" {
+	if e.mode == command {
 		bg = "\x1b[41m"
-	} else if e.mode == "input" {
+	} else if e.mode == input {
 		bg = "\x1b[42m"
 	} else {
 		bg = "\x1b[46m"
 		e.infoBar.cmd = e.fileName
 	}
-	e.infoBar.pos = strings.Join([]string{strconv.Itoa(e.col), ":", strconv.Itoa(e.row)}, "")
 	// Clear the line
 	fmt.Fprintf(e.writer, "\x1b[2K")
 
@@ -199,6 +234,7 @@ func (e *Editor) drawBottomInfo() {
 	}
 	fmt.Print(e.infoBar.pos)
 
+	e.infoBar.pos = ""
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
 	e.moveCursor(1, e.infoBar.t+1)
@@ -215,13 +251,10 @@ func (e *Editor) save(fn string) {
 		check(err)
 	}
 	writer.Flush()
+	e.cmd[0] = fn + " saved"
 }
 
 func (e *Editor) open(fn string) {
-	tab := ""
-	for i := 0; i < e.tabWidth; i++ {
-		tab += " "
-	}
 	file, err := os.Open(fn)
 	defer file.Close()
 	check(err)
@@ -230,7 +263,7 @@ func (e *Editor) open(fn string) {
 	for scanner.Scan() {
 		s := scanner.Text()
 		if len(s) > 0 {
-			s = strings.ReplaceAll(scanner.Text(), string('\t'), tab)
+			s = strings.ReplaceAll(scanner.Text(), string('\t'), e.tab)
 		}
 		e.lines = append(e.lines, s)
 	}

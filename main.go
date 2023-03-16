@@ -11,7 +11,6 @@ import (
 // Look into ropes later
 // Move cursor related stuff to its own file
 // Move file related stuff to its own file
-// Clean up everything to do with input
 
 func main() {
 	args := os.Args
@@ -38,17 +37,15 @@ func main() {
 		line := e.lines[e.row]
 		inp, _ := e.reader.ReadByte()
 		switch e.mode {
-		case "move":
-			i := handleMoveInput(inp, &e, k)
-			if i < 1 {
-				return
-			}
-		case "command":
+		case move:
+			handleMoveInput(inp, &e, k)
+		case command:
 			switch inp {
-			case e.ansiCodes["escape"][0]:
+			case k.esc:
 				e.cmd = []string{"", ""}
-				e.mode = "move"
-			case e.ansiCodes["return"][0]:
+				e.mode = move
+			case k.cr:
+
 				if e.cmd[1] == "q" {
 					e.clearScreen()
 					os.Exit(0)
@@ -56,12 +53,11 @@ func main() {
 					if fn != "" {
 						e.save("testing.txt")
 					} else {
-						e.cmd[0] = ""
-						e.debug = append(e.debug, "No file to save")
+						e.cmd[0] = "No file to save"
 					}
 				}
-				e.cmd = []string{":", ""}
-			case e.ansiCodes["backspace"][0]:
+				e.cmd[1] = ""
+			case k.backspace:
 				if len(e.cmd[1]) > 0 {
 					e.cmd[1] = e.cmd[1][:len(e.cmd[1])-1]
 				}
@@ -71,18 +67,18 @@ func main() {
 				e.cmd[1] += string(inp)
 			}
 
-		case "input":
-			if inp == e.ansiCodes["escape"][0] { // Pressing escape
-				e.mode = "move"
+		case input:
+			if inp == k.esc { // Pressing escape
+				e.mode = move
 				e.setCursorStyle()
-			} else if inp == e.ansiCodes["return"][0] || inp == 13 { // Pressing return
+			} else if inp == k.cr { // Pressing return
 				// Split the line at the cursor
 				left := e.lines[e.row][e.col:]  // Part of the line up to the cursor
 				right := e.lines[e.row][:e.col] // Part of the line after the cursor
 				e.lines[e.row] = left           // Current row will contain characters up to the cursor
 				e.insertLine(e.row, right)      // Add a new line below with the rest of the characters
 				Down(1, &e)                     // Move down to the new line
-			} else if inp == e.ansiCodes["backspace"][0] || string(inp) == "24" {
+			} else if inp == k.backspace {
 				if len(line) > 0 && e.col > 0 {
 					Left(1, &e)
 					if e.col < len(line) {
@@ -91,60 +87,76 @@ func main() {
 					e.lines[e.row] = line
 				}
 			} else {
+				dif := 1
 				// Typing new characters
-				e.lines[e.row] =
-					line[:e.col] + // Get the line up to the cursor
-						string(inp) + // Add the new letter
-						line[e.col:] // Append the rest of the line
-				Right(1, &e)
+				left := line[:e.col]
+				newChars := ""
+				right := line[e.col:]
+				switch inp {
+				case k.parenthesis:
+					newChars = "()"
+				case k.bracket:
+					newChars = "[]"
+				case k.brace:
+					newChars = "{}"
+				case k.quote:
+					newChars = "''"
+				case k.dquote:
+					newChars = "\"\""
+				case k.backtick:
+					newChars = "``"
+				case k.tab:
+					newChars = e.tab
+					dif = e.tabWidth
+				default:
+					newChars = string(inp)
+				}
+				e.lines[e.row] = left + newChars + right
+				Right(dif, &e)
 			}
 		}
 	}
 }
 
 func Up(n int, e *Editor) {
-	if e.row > 0 {
-		e.moveCursor(e.cx, e.cy-1)
-	}
-	if e.col > len(e.lines[e.row]) {
-		e.moveCursor(len(e.lines[e.row])+e.lineNums.w, e.cy)
-	}
-	if e.cy < 1 {
-		e.offset--
-		e.cy = 1
+	if e.cy-n >= e.document.t {
+		e.moveDocCursor(e.cx, e.cy-n)
+	} else if e.cy-n < e.document.t && e.row >= e.document.t {
+		e.offset -= n
+		if e.offset < 0 {
+			e.offset = 0
+		}
+		e.moveDocCursor(e.cx, e.cy)
 	}
 }
 
 func Down(n int, e *Editor) {
-	if e.row < len(e.lines)-1 {
-		e.moveCursor(e.cx, e.cy+1)
-	}
-	if e.col > len(e.lines[e.row]) {
-		e.moveCursor(len(e.lines[e.row])+e.lineNums.w, e.cy)
-	}
-	if e.cy > e.document.h && len(e.lines) >= e.document.h {
-		e.offset++
-	}
-	if e.cy > e.document.h {
-		e.cy = e.document.h
+	if e.cy+n <= e.document.h {
+		e.moveDocCursor(e.cx, e.cy+n)
+	} else if e.cy+n > e.document.h && e.row < len(e.lines)-1 {
+		e.offset += n
+		if e.offset+e.document.h > len(e.lines) {
+			e.offset = len(e.lines) - e.document.h
+		}
+		e.moveDocCursor(e.cx, e.cy)
 	}
 }
 
 func Left(n int, e *Editor) {
-	if e.col-n > e.document.l {
-		e.moveCursor(e.cx-n, e.cy)
+	if e.cx-n > e.document.l {
+		e.moveDocCursor(e.cx-n, e.cy)
 	} else {
-		e.moveCursor(e.document.l, e.cy)
+		e.moveDocCursor(e.document.l, e.cy)
 	}
 }
 
 func Right(n int, e *Editor) {
 	if e.col < len(e.lines[e.row]) {
-		e.moveCursor(e.cx+n, e.cy)
+		e.moveDocCursor(e.cx+n, e.cy)
 	}
 }
 
-func handleMoveInput(inp byte, e *Editor, k KeyCode) int {
+func handleMoveInput(inp byte, e *Editor, k KeyCode) {
 	if inp == 'k' {
 		Up(1, e)
 	} else if inp == 'j' {
@@ -155,19 +167,20 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) int {
 		Right(1, e)
 	} else if inp == ':' {
 		e.cmd[0] = ":"
-		e.mode = "command"
+		e.mode = command
+
 	} else if inp == 'i' {
-		e.mode = "input"
+		e.mode = input
 		e.setCursorStyle()
 	} else if inp == 'o' {
 		e.insertLine(e.row+1, "")
 		Down(1, e)
-		e.mode = "input"
+		e.mode = input
 	} else if inp == 'O' {
 		Left(e.col, e)
 		e.insertLine(e.row, e.lines[e.row])
 		e.lines[e.row] = ""
-		e.mode = "input"
+		e.mode = input
 	} else if inp == 'x' {
 		line := e.lines[e.row]
 		if len(line) > 0 {
@@ -188,13 +201,16 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) int {
 			}
 		}
 	} else if inp == 'g' {
-		e.offset = 0
-		e.moveCursor(e.document.l, e.document.t)
-	} else if inp == 'G' {
-		if len(e.lines) > e.h {
-			e.offset = len(e.lines) - e.h + 1
-			e.moveCursor(e.document.l, e.document.h)
+		Up(e.row, e)
+		if e.row != 1 {
+			Up(e.row, e)
 		}
+	} else if inp == 'G' {
+		Down(len(e.lines), e)
+		if e.row != len(e.lines)-1 {
+			Down(len(e.lines)-e.row-1, e)
+		}
+
 	} else if inp == k.ctrlU {
 		if e.offset > e.document.h {
 			e.offset -= e.document.h
@@ -211,5 +227,4 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) int {
 			}
 		}
 	}
-	return 1
 }
