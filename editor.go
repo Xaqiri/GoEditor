@@ -32,11 +32,10 @@ type Editor struct {
 	lineNums         LineNumSection
 	document         TextDocSection
 	infoBar          InfoBarSection
-	debug            []string
 	cmd              []string
 	ansiCodes        map[string][]byte
 	keywords         []string
-	fileName         string
+	fileInfo         []string
 	tab              string
 }
 
@@ -64,7 +63,7 @@ func (e *Editor) initEditor() {
 	e.lineNums = LineNumSection{w: 4, h: e.h - 1, l: 1, t: 1}
 	e.document = TextDocSection{w: e.w - e.lineNums.w, h: e.h - e.infoBar.h, l: e.lineNums.w + 1, t: 1}
 
-	e.keywords = []string{"for", "func", "if", "else", "return", "package", "import", "switch", "case", "var"}
+	e.keywords = []string{"for", "func", "if", "else", "return", "package", "import", "switch", "case", "var", "defer", "type", "struct", "const", "int", "string", "byte", "map", "iota"}
 	e.ansiCodes = map[string][]byte{
 		"escape":    {'\033'},
 		"return":    {'\x0D'},
@@ -82,13 +81,13 @@ func (e *Editor) initEditor() {
 	e.offset = 0
 	e.row = e.cy + e.offset - e.document.t
 	e.col = 0
-	e.cmd = []string{"", ""}
+	e.cmd = []string{":", ""}
 	e.tabWidth = 4
 	e.tab = ""
 	for i := 0; i < e.tabWidth; i++ {
 		e.tab += " "
 	}
-
+	e.fileInfo = []string{"", ""}
 }
 
 func (e *Editor) hideCursor() {
@@ -116,13 +115,14 @@ func (e *Editor) clearScreen() {
 
 func (e *Editor) refreshScreen() {
 	x, y := e.cx, e.cy
-
+	e.hideCursor()
 	e.infoBar.pos = strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) + ":" + strconv.Itoa(len(e.lines))
 	e.clearScreen()
 	e.drawLineNums()
 	e.drawDocument(x, y)
 	e.drawBottomInfo()
 	e.setCursorStyle()
+	e.showCursor()
 	e.moveCursor(x, y)
 }
 
@@ -185,10 +185,17 @@ func (e *Editor) drawDocument(x, y int) {
 	}
 	for i := 1; i <= drawHeight; i++ {
 		e.moveDocCursor(e.document.l, i)
+		comment := strings.Split(e.lines[e.row], "//")
+		if len(comment) > 1 {
+			comment = comment[1:]
+		}
 		line := strings.Split(e.lines[e.row], " ")
 		for _, s := range line {
 			if contains(e.keywords, s) {
 				fmt.Fprintf(e.writer, "\x1b[34m%s\x1b[m ", s)
+			} else if s == "//" {
+				fmt.Fprintf(e.writer, "\x1b[36m%s%s\x1b[m ", s, string(comment[0]))
+				break
 			} else {
 				fmt.Print(s, " ")
 			}
@@ -209,14 +216,12 @@ func (e *Editor) drawBottomInfo() {
 		modeStr[1] = "c"
 	}
 	e.infoBar.mode = strings.Join(modeStr, "")
-	e.infoBar.cmd = strings.Join(e.cmd, "")
 	if e.mode == command {
 		bg = "\x1b[41m"
 	} else if e.mode == input {
 		bg = "\x1b[42m"
 	} else {
 		bg = "\x1b[46m"
-		e.infoBar.cmd = e.fileName
 	}
 	// Clear the line
 	fmt.Fprintf(e.writer, "\x1b[2K")
@@ -238,5 +243,9 @@ func (e *Editor) drawBottomInfo() {
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
 	e.moveCursor(1, e.infoBar.t+1)
-	fmt.Print(e.infoBar.cmd)
+	if e.mode == command {
+		fmt.Print(strings.Join(e.cmd, ""))
+	} else {
+		fmt.Print(strings.Join(e.fileInfo, " "))
+	}
 }

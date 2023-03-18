@@ -26,14 +26,14 @@ func (f *File) save(e *Editor) {
 		check(err)
 	}
 	writer.Flush()
-	e.cmd[0] = f.name + " saved"
+	e.fileInfo[1] = "saved"
 }
 
 func (f *File) open(e *Editor) {
 	file, err := os.Open(f.name)
 	defer file.Close()
 	check(err)
-	e.fileName = f.name
+	e.fileInfo[0] = f.name
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		s := scanner.Text()

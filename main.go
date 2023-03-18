@@ -7,10 +7,6 @@ import (
 	"golang.org/x/term"
 )
 
-// TODO
-// Look into ropes later
-// Move cursor related stuff to its own file
-
 func main() {
 	args := os.Args
 	var e Editor
@@ -37,19 +33,21 @@ func main() {
 		case move:
 			handleMoveInput(inp, &e, k)
 		case command:
+			e.cmd[0] = ":"
 			switch inp {
 			case k.esc:
-				e.cmd = []string{"", ""}
+				e.cmd = []string{":", ""}
 				e.mode = move
 			case k.cr:
 				if e.cmd[1] == "q" {
 					e.clearScreen()
 					os.Exit(0)
 				} else if e.cmd[1] == "w" {
+					e.mode = move
 					if f.name != "" {
 						f.save(&e)
 					} else {
-						e.cmd[0] = "No file to save"
+						e.fileInfo[1] = "No file to save"
 					}
 				}
 				e.cmd[1] = ""
@@ -58,8 +56,6 @@ func main() {
 					e.cmd[1] = e.cmd[1][:len(e.cmd[1])-1]
 				}
 			default:
-				e.debug = []string{""}
-				e.cmd[0] = ":"
 				e.cmd[1] += string(inp)
 			}
 		case input:
@@ -137,7 +133,7 @@ func Up(n int, e *Editor) {
 }
 
 func Down(n int, e *Editor) {
-	if e.cy+n <= e.document.h && e.cy+n < len(e.lines)-e.offset {
+	if e.cy+n <= e.document.h && e.cy+n <= len(e.lines)-e.offset {
 		e.moveDocCursor(e.cx, e.cy+n)
 	} else if e.cy+n > e.document.h && e.row < len(e.lines)-1 {
 		e.offset += n
@@ -182,7 +178,6 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) {
 		line := strings.Split(strings.Trim(e.lines[e.row][:e.col], " "), " ")
 		Left(len(line[len(line)-1])+1, e)
 	} else if inp == ':' {
-		e.cmd[0] = ":"
 		e.mode = command
 	} else if inp == 'a' {
 		e.mode = input
