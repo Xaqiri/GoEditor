@@ -117,7 +117,7 @@ func (e *Editor) clearScreen() {
 func (e *Editor) refreshScreen() {
 	x, y := e.cx, e.cy
 
-	e.infoBar.pos += strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) //+ ":" + strconv.Itoa(len(e.lines))
+	e.infoBar.pos = strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) + ":" + strconv.Itoa(len(e.lines))
 	e.clearScreen()
 	e.drawLineNums()
 	e.drawDocument(x, y)
@@ -239,38 +239,4 @@ func (e *Editor) drawBottomInfo() {
 	fmt.Fprintf(e.writer, "\x1b[m")
 	e.moveCursor(1, e.infoBar.t+1)
 	fmt.Print(e.infoBar.cmd)
-}
-
-func (e *Editor) save(fn string) {
-	file, err := os.Create(fn)
-	defer file.Close()
-	check(err)
-	writer := bufio.NewWriter(file)
-	for _, v := range e.lines {
-		_, err := writer.WriteString(v + "\n")
-		check(err)
-	}
-	writer.Flush()
-	e.cmd[0] = fn + " saved"
-}
-
-func (e *Editor) open(fn string) {
-	file, err := os.Open(fn)
-	defer file.Close()
-	check(err)
-	e.fileName = fn
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		s := scanner.Text()
-		if len(s) > 0 {
-			s = strings.ReplaceAll(scanner.Text(), string('\t'), e.tab)
-		}
-		e.lines = append(e.lines, s)
-	}
-}
-
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
 }

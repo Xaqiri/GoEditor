@@ -2,7 +2,7 @@ package main
 
 import (
 	"os"
-	// "strconv"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -10,20 +10,18 @@ import (
 // TODO
 // Look into ropes later
 // Move cursor related stuff to its own file
-// Move file related stuff to its own file
 
 func main() {
 	args := os.Args
-	var fn string
 	var e Editor
 	var k KeyCode
+	var f File
 	e.initEditor()
 	k.initKeyCode()
 
 	if len(args) > 1 {
-		fn = args[1]
-		e.open(fn)
-		e.debug = append(e.debug, fn)
+		f.init(args[1])
+		f.open(&e)
 	}
 	if len(e.lines) == 0 {
 		e.lines = append(e.lines, "")
@@ -32,7 +30,6 @@ func main() {
 	defer term.Restore(0, s)
 
 	for {
-
 		e.refreshScreen()
 		line := e.lines[e.row]
 		inp, _ := e.reader.ReadByte()
@@ -45,13 +42,12 @@ func main() {
 				e.cmd = []string{"", ""}
 				e.mode = move
 			case k.cr:
-
 				if e.cmd[1] == "q" {
 					e.clearScreen()
 					os.Exit(0)
 				} else if e.cmd[1] == "w" {
-					if fn != "" {
-						e.save("testing.txt")
+					if f.name != "" {
+						f.save(&e)
 					} else {
 						e.cmd[0] = "No file to save"
 					}
@@ -66,26 +62,25 @@ func main() {
 				e.cmd[0] = ":"
 				e.cmd[1] += string(inp)
 			}
-
 		case input:
 			if inp == k.esc { // Pressing escape
 				e.mode = move
+				Left(1, &e)
 				e.setCursorStyle()
 			} else if inp == k.cr { // Pressing return
 				// Split the line at the cursor
-				left := e.lines[e.row][e.col:]  // Part of the line up to the cursor
-				right := e.lines[e.row][:e.col] // Part of the line after the cursor
+				left := e.lines[e.row][:e.col]  // Part of the line up to the cursor
+				right := e.lines[e.row][e.col:] // Part of the line after the cursor
 				e.lines[e.row] = left           // Current row will contain characters up to the cursor
-				e.insertLine(e.row, right)      // Add a new line below with the rest of the characters
+				e.insertLine(e.row+1, right)    // Add a new line below with the rest of the characters
 				Down(1, &e)                     // Move down to the new line
-			} else if inp == k.backspace {
-				if len(line) > 0 && e.col > 0 {
-					Left(1, &e)
-					if e.col < len(line) {
-						line = line[:e.col] + line[e.col+1:]
-					}
-					e.lines[e.row] = line
+				if len(left) > 0 && len(right) > 0 && k.matchingBrackets(left[len(left)-1], right[0]) {
+					e.lines[e.row] = e.tab
+					e.insertLine(e.row+1, right)
+					Right(e.tabWidth, &e)
 				}
+			} else if inp == k.backspace {
+				deleteChar(&e, k, 1, k.backspace)
 			} else {
 				dif := 1
 				// Typing new characters
@@ -118,6 +113,17 @@ func main() {
 	}
 }
 
+func deleteChar(e *Editor, k KeyCode, num int, key byte) {
+	line := e.lines[e.row]
+	if e.col-num >= 0 && key == k.backspace {
+		Left(num, &*e)
+		line = line[:e.col] + line[e.col+num:]
+	} else if e.col+num <= len(line) && key == 'x' {
+		line = line[:e.col] + line[e.col+num:]
+	}
+	e.lines[e.row] = line
+}
+
 func Up(n int, e *Editor) {
 	if e.cy-n >= e.document.t {
 		e.moveDocCursor(e.cx, e.cy-n)
@@ -131,7 +137,7 @@ func Up(n int, e *Editor) {
 }
 
 func Down(n int, e *Editor) {
-	if e.cy+n <= e.document.h {
+	if e.cy+n <= e.document.h && e.cy+n < len(e.lines)-e.offset {
 		e.moveDocCursor(e.cx, e.cy+n)
 	} else if e.cy+n > e.document.h && e.row < len(e.lines)-1 {
 		e.offset += n
@@ -157,18 +163,31 @@ func Right(n int, e *Editor) {
 }
 
 func handleMoveInput(inp byte, e *Editor, k KeyCode) {
-	if inp == 'k' {
+	if inp == k.up {
 		Up(1, e)
-	} else if inp == 'j' {
+	} else if inp == k.down {
 		Down(1, e)
-	} else if inp == 'h' {
+	} else if inp == k.left {
 		Left(1, e)
-	} else if inp == 'l' {
+	} else if inp == k.right {
 		Right(1, e)
+	} else if inp == 48 {
+		Left(len(e.lines[e.row]), e)
+	} else if inp == 36 {
+		Right(len(e.lines[e.row]), e)
+	} else if inp == 'w' {
+		line := strings.Split(strings.Trim(e.lines[e.row][e.col:], " "), " ")
+		Right(len(line[0])+1, e)
+	} else if inp == 'b' {
+		line := strings.Split(strings.Trim(e.lines[e.row][:e.col], " "), " ")
+		Left(len(line[len(line)-1])+1, e)
 	} else if inp == ':' {
 		e.cmd[0] = ":"
 		e.mode = command
-
+	} else if inp == 'a' {
+		e.mode = input
+		e.setCursorStyle()
+		Right(1, e)
 	} else if inp == 'i' {
 		e.mode = input
 		e.setCursorStyle()
@@ -181,23 +200,21 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) {
 		e.insertLine(e.row, e.lines[e.row])
 		e.lines[e.row] = ""
 		e.mode = input
-	} else if inp == 'x' {
-		line := e.lines[e.row]
-		if len(line) > 0 {
-			if e.col < len(line) {
-				line = line[:e.col] + line[e.col+1:]
-			}
-			e.lines[e.row] = line
-		}
+	} else if inp == k.delete {
+		deleteChar(e, k, 1, k.delete)
 	} else if inp == 'd' {
-		if e.row < len(e.lines)-1 {
-			temp := make([]string, len(e.lines)-1)
-			copy(temp, e.lines[:e.row])
-			copy(temp[e.row:], e.lines[e.row+1:])
-			e.lines = temp
-			dif := e.col - len(e.lines[e.row])
-			if dif > 0 {
-				Left(dif, e)
+		inp, _ = e.reader.ReadByte()
+		if inp == 'd' {
+			// Pressing d twice deletes the current line
+			if e.row < len(e.lines)-1 {
+				temp := make([]string, len(e.lines)-1)
+				copy(temp, e.lines[:e.row])
+				copy(temp[e.row:], e.lines[e.row+1:])
+				e.lines = temp
+				dif := e.col - len(e.lines[e.row])
+				if dif > 0 {
+					Left(dif, e)
+				}
 			}
 		}
 	} else if inp == 'g' {

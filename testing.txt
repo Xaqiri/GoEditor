@@ -231,3 +231,4 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) {
         }
     }
 }
+
