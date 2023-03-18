@@ -117,7 +117,6 @@ func (e *Editor) refreshScreen() {
 	x, y := e.cx, e.cy
 	e.hideCursor()
 	e.infoBar.pos = strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) + ":" + strconv.Itoa(len(e.lines))
-	// e.clearScreen()
 	e.drawLineNums()
 	e.drawDocument(x, y)
 	e.drawBottomInfo()
@@ -252,6 +251,7 @@ func (e *Editor) drawBottomInfo() {
 	e.moveCursor(1, e.infoBar.t+1)
 	if e.mode == command {
 		fmt.Print(strings.Join(e.cmd, ""))
+		fmt.Fprintf(e.writer, "\033[K")
 	} else {
 		fmt.Print(strings.Join(e.fileInfo, " "))
 	}
