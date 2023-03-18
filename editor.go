@@ -117,13 +117,13 @@ func (e *Editor) refreshScreen() {
 	x, y := e.cx, e.cy
 	e.hideCursor()
 	e.infoBar.pos = strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) + ":" + strconv.Itoa(len(e.lines))
-	e.clearScreen()
+	// e.clearScreen()
 	e.drawLineNums()
 	e.drawDocument(x, y)
 	e.drawBottomInfo()
 	e.setCursorStyle()
-	e.showCursor()
 	e.moveCursor(x, y)
+	e.showCursor()
 }
 
 func (e *Editor) moveCursor(col, row int) {
@@ -145,13 +145,22 @@ func (e *Editor) moveDocCursor(col, row int) {
 }
 
 func (e *Editor) drawLineNums() {
+	num := ""
 	for i := 1; i < e.lineNums.h; i++ {
 		e.moveCursor(1, i)
+		num = strconv.Itoa(i + e.offset)
 		if i <= len(e.lines)-e.offset {
-			fmt.Print(i + e.offset)
+			if len(num) < e.lineNums.w {
+				for j := len(num); j < e.lineNums.w; j++ {
+					num += " "
+				}
+			}
+			fmt.Print(num)
 		} else {
 			fmt.Print("~")
 		}
+		// Clear the line
+		// fmt.Fprintf(e.writer, "\x1b[K")
 	}
 }
 
@@ -200,6 +209,7 @@ func (e *Editor) drawDocument(x, y int) {
 				fmt.Print(s, " ")
 			}
 		}
+		fmt.Fprintf(e.writer, "\033[K")
 	}
 	e.moveDocCursor(x, y)
 }
@@ -223,8 +233,6 @@ func (e *Editor) drawBottomInfo() {
 	} else {
 		bg = "\x1b[46m"
 	}
-	// Clear the line
-	fmt.Fprintf(e.writer, "\x1b[2K")
 
 	fmt.Fprintf(e.writer, bg)
 	fmt.Fprintf(e.writer, "\x1b[30m")
