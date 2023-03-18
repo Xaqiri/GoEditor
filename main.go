@@ -41,7 +41,7 @@ func main() {
 			case k.cr:
 				if e.cmd[1] == "q" {
 					e.clearScreen()
-					os.Exit(0)
+					return
 				} else if e.cmd[1] == "w" {
 					e.mode = move
 					if f.name != "" {

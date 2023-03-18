@@ -158,9 +158,8 @@ func (e *Editor) drawLineNums() {
 			fmt.Print(num)
 		} else {
 			fmt.Print("~")
+			fmt.Fprintf(e.writer, "\x1b[K")
 		}
-		// Clear the line
-		// fmt.Fprintf(e.writer, "\x1b[K")
 	}
 }
 
