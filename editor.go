@@ -52,15 +52,16 @@ type InfoBarSection struct {
 }
 
 type TextDocSection struct {
-	w, h int
-	l, t int
+	w, h   int
+	l, t   int
+	cx, cy int
 }
 
 func (e *Editor) initEditor() {
 	e.w, e.h, _ = term.GetSize(0)
 	e.infoBar = InfoBarSection{w: e.w, h: 2, l: 1, t: e.h - 1, pos: strconv.Itoa(e.row)}
 	e.lineNums = LineNumSection{w: 6, h: e.h - 1, l: 1, t: 1}
-	e.document = TextDocSection{w: e.w - e.lineNums.w, h: e.h - e.infoBar.h, l: e.lineNums.w + 1, t: 1}
+	e.document = TextDocSection{w: e.w - e.lineNums.w, h: e.h - e.infoBar.h, l: e.lineNums.w + 1, t: 1, cx: e.lineNums.w + 1, cy: 1}
 	e.ansiCodes = map[string][]byte{
 		"escape":    {'\033'},
 		"return":    {'\x0D'},
@@ -122,14 +123,18 @@ func (e *Editor) clearScreen() {
 }
 
 func (e *Editor) refreshScreen() {
-	x, y := e.cx, e.cy
+	// x, y := e.cx, e.cy
 	e.hideCursor()
 	e.infoBar.pos = strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) + ":" + strconv.Itoa(len(e.lines))
 	e.drawLineNums()
-	e.drawDocument(x, y)
+	e.drawDocument()
 	e.drawBottomInfo()
 	e.setCursorStyle()
-	e.moveCursor(x, y)
+	if e.mode == command {
+		e.moveCursor(e.infoBar.l+len(e.cmd[0])+len(e.cmd[1]), e.h)
+	} else {
+		e.moveCursor(e.document.cx, e.document.cy)
+	}
 	e.showCursor()
 }
 
@@ -148,6 +153,7 @@ func (e *Editor) moveDocCursor(col, row int) {
 		e.col -= dif
 		col = e.col + e.document.l
 	}
+	e.document.cx, e.document.cy = col, row
 	e.moveCursor(col, row)
 }
 
@@ -166,7 +172,7 @@ func (e *Editor) drawLineNums() {
 			fmt.Print(num)
 			num = ""
 		} else {
-			fmt.Print("~")
+			fmt.Print("    ~ ")
 			fmt.Fprintf(e.writer, "\x1b[K")
 		}
 	}
@@ -190,7 +196,8 @@ func (e *Editor) insertLine(lineNumber int, line string) {
 	e.moveDocCursor(e.document.l, e.cy)
 }
 
-func (e *Editor) drawDocument(x, y int) {
+func (e *Editor) drawDocument() {
+	x, y := e.document.cx, e.document.cy
 	drawHeight := 0
 	if len(e.lines) > e.document.h {
 		drawHeight = e.document.h
@@ -262,5 +269,6 @@ func (e *Editor) drawBottomInfo() {
 		fmt.Fprintf(e.writer, "\033[K")
 	} else {
 		fmt.Print(strings.Join(e.fileInfo, " "))
+		fmt.Fprintf(e.writer, "\033[K")
 	}
 }

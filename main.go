@@ -27,13 +27,11 @@ func main() {
 
 	for {
 		e.refreshScreen()
-		line := e.lines[e.row]
 		inp, _ := e.reader.ReadByte()
 		switch e.mode {
 		case move:
 			handleMoveInput(inp, &e, k)
 		case command:
-			e.cmd[0] = ":"
 			switch inp {
 			case k.esc:
 				e.cmd = []string{":", ""}
@@ -43,14 +41,24 @@ func main() {
 					e.clearScreen()
 					return
 				} else if e.cmd[1] == "w" {
-					e.mode = move
 					if f.name != "" {
 						f.save(&e)
+						e.cmd[0] = ":"
+						e.cmd[1] = ""
+						e.mode = move
 					} else {
-						e.fileInfo[1] = "No file to save"
+						e.cmd[0] = "Enter file name: "
+						e.cmd[1] = ""
 					}
+				} else {
+					isFile := strings.Split(e.cmd[1], ".")
+					if len(isFile) > 1 {
+						f.init(e.cmd[1])
+						f.save(&e)
+					}
+					e.cmd = []string{":", ""}
+					e.mode = move
 				}
-				e.cmd[1] = ""
 			case k.backspace:
 				if len(e.cmd[1]) > 0 {
 					e.cmd[1] = e.cmd[1][:len(e.cmd[1])-1]
@@ -80,6 +88,7 @@ func main() {
 			} else {
 				dif := 1
 				// Typing new characters
+				line := e.lines[e.row]
 				left := line[:e.col]
 				newChars := ""
 				right := line[e.col:]

@@ -20,6 +20,7 @@ func (f *File) save(e *Editor) {
 	file, err := os.Create(f.name)
 	defer file.Close()
 	check(err)
+	e.fileInfo[0] = f.name
 	writer := bufio.NewWriter(file)
 	for _, v := range e.lines {
 		_, err := writer.WriteString(v + "\n")
