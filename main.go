@@ -222,21 +222,11 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) {
 		if e.row != len(e.lines)-1 {
 			Down(len(e.lines)-e.row-1, e)
 		}
-
 	} else if inp == k.ctrlU {
-		if e.offset > e.document.h {
-			e.offset -= e.document.h
-		} else {
-			e.offset = 0
-			e.moveCursor(e.document.l, 1)
-		}
+		Up(e.document.h, e)
+		// e.scroll(e.document.h * -1)
 	} else if inp == k.ctrlD {
-		if len(e.lines) > e.document.h {
-			e.offset += e.document.h
-			if e.offset > len(e.lines)-e.document.h {
-				e.offset = len(e.lines) - e.document.h
-				e.moveCursor(e.document.l, e.document.h)
-			}
-		}
+		Down(e.document.h, e)
+		// e.scroll(e.document.h)
 	}
 }

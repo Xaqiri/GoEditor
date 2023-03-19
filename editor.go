@@ -34,7 +34,6 @@ type Editor struct {
 	infoBar          InfoBarSection
 	cmd              []string
 	ansiCodes        map[string][]byte
-	keywords         []string
 	fileInfo         []string
 	tab              string
 }
@@ -60,10 +59,8 @@ type TextDocSection struct {
 func (e *Editor) initEditor() {
 	e.w, e.h, _ = term.GetSize(0)
 	e.infoBar = InfoBarSection{w: e.w, h: 2, l: 1, t: e.h - 1, pos: strconv.Itoa(e.row)}
-	e.lineNums = LineNumSection{w: 4, h: e.h - 1, l: 1, t: 1}
+	e.lineNums = LineNumSection{w: 6, h: e.h - 1, l: 1, t: 1}
 	e.document = TextDocSection{w: e.w - e.lineNums.w, h: e.h - e.infoBar.h, l: e.lineNums.w + 1, t: 1}
-
-	e.keywords = []string{"for", "func", "if", "else", "return", "package", "import", "switch", "case", "var", "defer", "type", "struct", "const", "int", "string", "byte", "map", "iota"}
 	e.ansiCodes = map[string][]byte{
 		"escape":    {'\033'},
 		"return":    {'\x0D'},
@@ -88,6 +85,17 @@ func (e *Editor) initEditor() {
 		e.tab += " "
 	}
 	e.fileInfo = []string{"", ""}
+}
+
+func (e *Editor) scroll(num int) {
+	fmt.Fprintf(e.writer, "\033[S")
+	e.offset += num
+	if e.offset < 0 {
+		e.offset = 0
+	}
+	if e.offset > len(e.lines)-e.document.h {
+		e.offset = len(e.lines) - e.document.h
+	}
 }
 
 func (e *Editor) hideCursor() {
@@ -147,14 +155,16 @@ func (e *Editor) drawLineNums() {
 	num := ""
 	for i := 1; i < e.lineNums.h; i++ {
 		e.moveCursor(1, i)
-		num = strconv.Itoa(i + e.offset)
+		numlen := len(strconv.Itoa(i + e.offset))
 		if i <= len(e.lines)-e.offset {
-			if len(num) < e.lineNums.w {
-				for j := len(num); j < e.lineNums.w; j++ {
+			if numlen < e.lineNums.w {
+				for j := 0; j < e.lineNums.w-numlen-1; j++ {
 					num += " "
 				}
 			}
+			num += strconv.Itoa(i+e.offset) + " "
 			fmt.Print(num)
+			num = ""
 		} else {
 			fmt.Print("~")
 			fmt.Fprintf(e.writer, "\x1b[K")
@@ -198,10 +208,8 @@ func (e *Editor) drawDocument(x, y int) {
 		}
 		line := strings.Split(e.lines[e.row], " ")
 		for _, s := range line {
-			if contains(e.keywords, s) {
-				fmt.Fprintf(e.writer, "\x1b[34m%s\x1b[m ", s)
-			} else if s == "//" {
-				fmt.Fprintf(e.writer, "\x1b[36m%s%s\x1b[m ", s, string(comment[0]))
+			if s == "//" {
+				fmt.Fprintf(e.writer, "\x1b[32m%s%s\x1b[m ", s, string(comment[0]))
 				break
 			} else {
 				fmt.Print(s, " ")
