@@ -7,6 +7,9 @@ import (
 	"golang.org/x/term"
 )
 
+// TODO: Add syntax highlighting for Go
+// TODO: Add search
+
 func main() {
 	args := os.Args
 	var e Editor
@@ -142,9 +145,10 @@ func Up(n int, e *Editor) {
 }
 
 func Down(n int, e *Editor) {
-	if e.cy+n <= e.document.h && e.cy+n <= len(e.lines)-e.offset {
-		e.moveDocCursor(e.cx, e.cy+n)
-	} else if e.cy+n > e.document.h && e.row < len(e.lines)-1 {
+	//
+	if e.document.cy+n <= e.document.h && e.document.cy+n <= len(e.lines)-e.offset {
+		e.moveDocCursor(e.document.cx, e.document.cy+n)
+	} else if e.cy+n > e.document.h && len(e.lines) > e.document.h {
 		e.offset += n
 		if e.offset+e.document.h > len(e.lines) {
 			e.offset = len(e.lines) - e.document.h
@@ -232,9 +236,11 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) {
 			Down(len(e.lines)-e.row-1, e)
 		}
 	} else if inp == k.ctrlU {
+		Up(e.document.h-e.document.cy, e)
 		Up(e.document.h, e)
 		// e.scroll(e.document.h * -1)
 	} else if inp == k.ctrlD {
+		Down(e.document.h-e.document.cy, e)
 		Down(e.document.h, e)
 		// e.scroll(e.document.h)
 	}

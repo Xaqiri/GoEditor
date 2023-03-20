@@ -123,9 +123,8 @@ func (e *Editor) clearScreen() {
 }
 
 func (e *Editor) refreshScreen() {
-	// x, y := e.cx, e.cy
 	e.hideCursor()
-	e.infoBar.pos = strconv.Itoa(e.col) + ":" + strconv.Itoa(e.row) + ":" + strconv.Itoa(len(e.lines))
+	e.infoBar.pos = strconv.Itoa(e.col+1) + ":" + strconv.Itoa(e.row+1) + ":" + strconv.Itoa(len(e.lines))
 	e.drawLineNums()
 	e.drawDocument()
 	e.drawBottomInfo()
@@ -168,13 +167,16 @@ func (e *Editor) drawLineNums() {
 					num += " "
 				}
 			}
-			num += strconv.Itoa(i+e.offset) + " "
+			num += strconv.Itoa(i + e.offset)
 			fmt.Print(num)
 			num = ""
 		} else {
-			fmt.Print("    ~ ")
-			fmt.Fprintf(e.writer, "\x1b[K")
+			fmt.Print("    ~")
 		}
+		// fmt.Printf("\x1b(0\x78")
+		// fmt.Printf("\x1b(B")
+		fmt.Fprintf(e.writer, "\u2502")
+		fmt.Fprintf(e.writer, "\x1b[K")
 	}
 }
 
