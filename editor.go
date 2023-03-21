@@ -17,6 +17,7 @@ const (
 	input = iota
 	move
 	command
+	search
 	visual
 )
 
@@ -85,7 +86,7 @@ func (e *Editor) initEditor() {
 	for i := 0; i < e.tabWidth; i++ {
 		e.tab += " "
 	}
-	e.fileInfo = []string{"", ""}
+	e.fileInfo = []string{"", "", ""}
 }
 
 func (e *Editor) scroll(num int) {
@@ -129,7 +130,7 @@ func (e *Editor) refreshScreen() {
 	e.drawDocument()
 	e.drawBottomInfo()
 	e.setCursorStyle()
-	if e.mode == command {
+	if e.mode == command || e.mode == search {
 		e.moveCursor(e.infoBar.l+len(e.cmd[0])+len(e.cmd[1]), e.h)
 	} else {
 		e.moveCursor(e.document.cx, e.document.cy)
@@ -165,6 +166,7 @@ func (e *Editor) drawLineNums() {
 			if numlen < e.lineNums.w {
 				for j := 0; j < e.lineNums.w-numlen-1; j++ {
 					num += " "
+					// fmt.Fprintf(e.writer, "\u256C")
 				}
 			}
 			num += strconv.Itoa(i + e.offset)
@@ -239,9 +241,11 @@ func (e *Editor) drawBottomInfo() {
 		modeStr[1] = "m"
 	} else if e.mode == command {
 		modeStr[1] = "c"
+	} else if e.mode == search {
+		modeStr[1] = "s"
 	}
 	e.infoBar.mode = strings.Join(modeStr, "")
-	if e.mode == command {
+	if e.mode == command || e.mode == search {
 		bg = "\x1b[41m"
 	} else if e.mode == input {
 		bg = "\x1b[42m"
@@ -266,7 +270,7 @@ func (e *Editor) drawBottomInfo() {
 	// Reset the bg and fg colors
 	fmt.Fprintf(e.writer, "\x1b[m")
 	e.moveCursor(1, e.infoBar.t+1)
-	if e.mode == command {
+	if e.mode == command || e.mode == search {
 		fmt.Print(strings.Join(e.cmd, ""))
 		fmt.Fprintf(e.writer, "\033[K")
 	} else {

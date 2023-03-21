@@ -9,6 +9,8 @@ import (
 
 // TODO: Add syntax highlighting for Go
 // TODO: Add search
+// TODO: Remove "saved" from e.fileInfo after saving a file
+// BUG: ctrlD and ctrlU don't scroll properly
 
 func main() {
 	args := os.Args
@@ -34,6 +36,18 @@ func main() {
 		switch e.mode {
 		case move:
 			handleMoveInput(inp, &e, k)
+		case search:
+			switch inp {
+			case k.esc:
+				e.cmd = []string{":", ""}
+				e.mode = move
+			case k.backspace:
+				if len(e.cmd[1]) > 0 {
+					e.cmd[1] = e.cmd[1][:len(e.cmd[1])-1]
+				}
+			default:
+				e.cmd[1] += string(inp)
+			}
 		case command:
 			switch inp {
 			case k.esc:
@@ -145,7 +159,6 @@ func Up(n int, e *Editor) {
 }
 
 func Down(n int, e *Editor) {
-	//
 	if e.document.cy+n <= e.document.h && e.document.cy+n <= len(e.lines)-e.offset {
 		e.moveDocCursor(e.document.cx, e.document.cy+n)
 	} else if e.cy+n > e.document.h && len(e.lines) > e.document.h {
@@ -192,6 +205,10 @@ func handleMoveInput(inp byte, e *Editor, k KeyCode) {
 		Left(len(line[len(line)-1])+1, e)
 	} else if inp == ':' {
 		e.mode = command
+		e.cmd[0] = ":"
+	} else if inp == '/' {
+		e.mode = search
+		e.cmd[0] = "/"
 	} else if inp == 'a' {
 		e.mode = input
 		e.setCursorStyle()

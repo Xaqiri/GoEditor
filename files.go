@@ -7,13 +7,18 @@ import (
 )
 
 type File struct {
-	name    string
-	changed bool
+	name     string
+	filetype string
+	changed  bool
 }
 
 func (f *File) init(fn string) {
 	f.name = fn
 	f.changed = false
+	temp := strings.Split(fn, ".")
+	if len(temp) > 1 && (temp[1] == "go" || temp[1] == "txt") {
+		f.filetype = temp[1]
+	}
 }
 
 func (f *File) save(e *Editor) {
@@ -35,6 +40,7 @@ func (f *File) open(e *Editor) {
 	defer file.Close()
 	check(err)
 	e.fileInfo[0] = f.name
+	e.fileInfo[2] = f.filetype
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		s := scanner.Text()
