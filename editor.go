@@ -86,7 +86,11 @@ func (e *Editor) initEditor() {
 	for i := 0; i < e.tabWidth; i++ {
 		e.tab += " "
 	}
-	e.fileInfo = []string{"", "", ""}
+	e.fileInfo = []string{
+		"", // File name
+		"", // File status
+		"", // File type
+	}
 }
 
 func (e *Editor) scroll(num int) {

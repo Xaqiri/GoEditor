@@ -9,7 +9,6 @@ import (
 
 // TODO: Add syntax highlighting for Go
 // TODO: Add search
-// TODO: Remove "saved" from e.fileInfo after saving a file
 // BUG: ctrlD and ctrlU don't scroll properly
 
 func main() {
@@ -33,6 +32,7 @@ func main() {
 	for {
 		e.refreshScreen()
 		inp, _ := e.reader.ReadByte()
+		e.fileInfo[1] = ""
 		switch e.mode {
 		case move:
 			handleMoveInput(inp, &e, k)
