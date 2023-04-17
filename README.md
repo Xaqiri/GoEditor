@@ -1,4 +1,5 @@
 # GoEditor
 Terminal based text editor
 
-<img width="1280" alt="Screenshot 2023-03-08 at 20 04 13" src="https://user-images.githubusercontent.com/7574937/223896999-ec092901-0859-4698-be66-788e88364271.png">
+![Screenshot 2023-04-17 at 10 41 52 AM](https://user-images.githubusercontent.com/7574937/232539494-d57a70e6-b6ef-460c-a7c8-88c54194d238.png)
+
